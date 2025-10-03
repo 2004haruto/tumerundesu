@@ -55,10 +55,7 @@ const LoginScreen = ({ navigation }: Props) => {
         <View style={styles.additionalButtonsContainer}>
           <TouchableOpacity 
             style={styles.textButton}
-            onPress={() => {
-              // ここに新規登録画面への遷移処理を実装
-              console.log('新規登録へ');
-            }}
+            onPress={() => navigation.navigate('SignUp')}
           >
             <Text style={styles.textButtonText}>新規登録はこちら</Text>
           </TouchableOpacity>

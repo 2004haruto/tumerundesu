@@ -2,11 +2,12 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './src/screens/LoginScreen';
+import SignUpScreen from './src/screens/SignUpScreen';
 
 // ナビゲーションのパラメータ型を定義
 export type RootStackParamList = {
-  Login: undefined; // パラメータなしの場合はundefined
-  // 後で追加する画面のパラメータ型もここに定義
+  Login: undefined;
+  SignUp: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -22,7 +23,7 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Login" component={LoginScreen} />
-        {/* 後で他の画面も追加*/}
+        <Stack.Screen name="SignUp" component={SignUpScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
