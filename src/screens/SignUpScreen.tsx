@@ -1,15 +1,19 @@
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ScrollView,
+  View,
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { useAuth } from '../contexts/AuthContext';
+import { AuthError, AuthErrorType } from '../services/api';
+import { InputValidator } from '../utils/validation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 
@@ -18,29 +22,77 @@ const SignUpScreen = ({ navigation }: Props) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { register } = useAuth();
 
-  const handleSignUp = () => {
-    // 入力検証
-    if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('エラー', 'すべての項目を入力してください。');
+  const handleSignUp = async () => {
+    // 入力バリデーション
+    const validation = InputValidator.validateSignUpInput(name, email, password, confirmPassword);
+    if (!validation.isValid) {
+      Alert.alert('入力エラー', validation.message);
       return;
     }
 
-    if (password !== confirmPassword) {
-      Alert.alert('エラー', 'パスワードが一致しません。');
-      return;
-    }
+    setIsLoading(true);
 
-    // パスワードの長さチェック
-    if (password.length < 6) {
-      Alert.alert('エラー', 'パスワードは6文字以上で入力してください。');
-      return;
+    try {
+      await register({
+        name: name.trim(),
+        email: email.trim(),
+        password: password,
+      });
+      // 登録成功時は AuthProvider が自動的に認証済み画面に遷移する
+    } catch (error: any) {
+      // 開発時のみデバッグログを出力（ネットワークエラー以外は出力しない）
+      if (__DEV__ && error instanceof AuthError && error.type === AuthErrorType.NETWORK_ERROR) {
+        console.log('Register network error:', error.message);
+      }
+      
+      if (error instanceof AuthError) {
+        handleAuthError(error);
+      } else {
+        Alert.alert('登録エラー', error.message || 'アカウント作成に失敗しました。');
+      }
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    // ここにアカウント作成の処理を実装
-    console.log('Name:', name);
-    console.log('Email:', email);
-    console.log('Password:', password);
+  const handleAuthError = (error: AuthError) => {
+    switch (error.type) {
+      case AuthErrorType.EMAIL_ALREADY_EXISTS:
+        Alert.alert(
+          'メールアドレスが既に登録されています',
+          'このメールアドレスは既に使用されています。\n\n・別のメールアドレスでアカウント作成を行ってください\n・既にアカウントをお持ちの場合はログインしてください',
+          [
+            { text: 'OK', style: 'default' },
+            { text: 'ログイン', style: 'default', onPress: () => navigation.navigate('Login') }
+          ]
+        );
+        break;
+        
+      case AuthErrorType.VALIDATION_ERROR:
+        Alert.alert(
+          '入力エラー',
+          error.message + '\n\n以下を確認してください：\n・メールアドレスの形式が正しいか\n・パスワードが6文字以上か\n・お名前が2文字以上か'
+        );
+        break;
+        
+      case AuthErrorType.NETWORK_ERROR:
+        Alert.alert(
+          'ネットワークエラー',
+          'インターネット接続を確認してください。\n\n・Wi-Fiまたはモバイルデータ通信がオンになっていますか？\n・サーバーに接続できない場合があります',
+          [
+            { text: 'OK', style: 'default' },
+            { text: '再試行', style: 'default', onPress: handleSignUp }
+          ]
+        );
+        break;
+        
+      default:
+        Alert.alert('登録エラー', error.message || 'アカウント作成に失敗しました。');
+        break;
+    }
   };
 
   return (
@@ -78,10 +130,15 @@ const SignUpScreen = ({ navigation }: Props) => {
             secureTextEntry
           />
           <TouchableOpacity 
-            style={styles.signUpButton}
+            style={[styles.signUpButton, isLoading && styles.disabledButton]}
             onPress={handleSignUp}
+            disabled={isLoading}
           >
-            <Text style={styles.signUpButtonText}>アカウント作成</Text>
+            {isLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.signUpButtonText}>アカウント作成</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -144,6 +201,9 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 14,
     textDecorationLine: 'underline',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });
 

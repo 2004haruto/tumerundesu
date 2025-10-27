@@ -1,0 +1,853 @@
+// SettingsScreen.tsx
+import { Ionicons } from "@expo/vector-icons";
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from "react-native";
+import { RootStackParamList } from '../../App';
+import { useAuth } from '../contexts/AuthContext';
+import { AuthError, AuthErrorType } from '../services/api';
+import { InputValidator } from '../utils/validation';
+
+const { width } = Dimensions.get("window");
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
+
+type DietTag = "ベジタリアン" | "グルテンフリー" | "低糖質" | "高たんぱく";
+
+const DIET_TAGS: DietTag[] = ["ベジタリアン", "グルテンフリー", "低糖質", "高たんぱく"];
+
+const SettingsScreen: React.FC<Props> = ({ navigation }) => {
+  const { user, updateProfile, updatePassword, refreshProfile } = useAuth();
+  
+  // 基本情報
+  const [userName, setUserName] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+
+  // パスワード変更
+  const [currentPassword, setCurrentPassword] = useState<string>("");
+  const [newPassword, setNewPassword] = useState<string>("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState<string>("");
+  const [showPasswordSection, setShowPasswordSection] = useState<boolean>(false);
+
+  // 食の設定
+  const [allergies, setAllergies] = useState<string>("");
+  const [dietTags, setDietTags] = useState<DietTag[]>([]);
+
+  // お弁当サイズ設定（4項目）
+  const [bentoCapacity, setBentoCapacity] = useState<string>(""); // 容量(ml)
+  const [bentoWidth, setBentoWidth] = useState<string>(""); // 横幅(cm)
+  const [bentoLength, setBentoLength] = useState<string>(""); // 縦(cm)
+  const [bentoHeight, setBentoHeight] = useState<string>(""); // 高さ(cm)
+
+  // 通知設定
+  const [reminderEnabled, setReminderEnabled] = useState<boolean>(true);
+  const [todayScheduleEnabled, setTodayScheduleEnabled] = useState<boolean>(false);
+
+  // アプリの通知（全体スイッチ想定）
+  const [appPushEnabled, setAppPushEnabled] = useState<boolean>(true);
+
+  // ローディング状態
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
+
+  // 画面初期化時の一回だけプロフィール更新
+  useEffect(() => {
+    const initializeProfile = async () => {
+      try {
+        await refreshProfile();
+      } catch (error: any) {
+        console.error('プロフィール読み込みエラー:', error);
+        // 認証エラーの場合、ログイン画面にリダイレクト
+        if (error.status === 401 || error.status === 403) {
+          Alert.alert(
+            '認証エラー',
+            'セッションの有効期限が切れました。再度ログインしてください。',
+            [
+              {
+                text: 'OK',
+                onPress: () => navigation.navigate('Login')
+              }
+            ]
+          );
+        }
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    initializeProfile();
+  }, []); // 空の依存配列で一回のみ実行
+
+  // ユーザー情報の変更を監視してフォームを更新
+  useEffect(() => {
+    if (user) {
+      setUserName(user.name || "");
+      setEmail(user.email || "");
+      setAllergies(user.allergies || "");
+      
+      // お弁当サイズの読み込み
+      setBentoCapacity(user.bento_capacity || "");
+      setBentoWidth(user.bento_width || "");
+      setBentoLength(user.bento_length || "");
+      setBentoHeight(user.bento_height || "");
+
+      // 食事ポリシーの解析（preferencesから）
+      if (user.preferences) {
+        const tags = user.preferences.split(',').map(tag => tag.trim()) as DietTag[];
+        const validTags = tags.filter(tag => DIET_TAGS.includes(tag));
+        setDietTags(validTags);
+      }
+    }
+  }, [user]); // userが変更された時のみフォームを更新（APIコールなし）
+
+  const canSave = useMemo(() => {
+    // 基本バリデーション
+    const nameValid = userName.trim().length >= 2;
+    const emailValid = InputValidator.validateEmail(email).isValid;
+    
+    return nameValid && emailValid;
+  }, [userName, email]);
+
+  const canSavePassword = useMemo(() => {
+    if (!showPasswordSection) return false;
+    
+    return (
+      currentPassword.length > 0 &&
+      InputValidator.validatePassword(newPassword).isValid &&
+      newPassword === confirmNewPassword
+    );
+  }, [showPasswordSection, currentPassword, newPassword, confirmNewPassword]);
+
+  const toggleDietTag = (tag: DietTag) => {
+    setDietTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const onSave = async () => {
+    if (!canSave) {
+      Alert.alert('入力エラー', '必須項目を正しく入力してください。');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // 食事ポリシーの結合
+      const preferences = dietTags.join(', ');
+
+      const updateData = {
+        name: userName.trim(),
+        email: email.trim(),
+        allergies: allergies.trim() || undefined,
+        preferences: preferences || undefined,
+        // お弁当サイズ設定（4項目）
+        bento_capacity: bentoCapacity.trim() || undefined,
+        bento_width: bentoWidth.trim() || undefined,
+        bento_length: bentoLength.trim() || undefined,
+        bento_height: bentoHeight.trim() || undefined,
+      };
+
+      await updateProfile(updateData);
+      Alert.alert('保存完了', 'プロフィールを更新しました。', [
+        { text: 'OK', onPress: () => navigation.navigate('Home') }
+      ]);
+      
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      
+      if (error instanceof AuthError) {
+        handleAuthError(error);
+      } else {
+        Alert.alert('保存エラー', error.message || 'プロフィールの更新に失敗しました。');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onSavePassword = async () => {
+    if (!canSavePassword) {
+      Alert.alert('入力エラー', 'パスワード情報を正しく入力してください。');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      await updatePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      
+      Alert.alert('パスワード変更完了', 'パスワードを変更しました。');
+      
+      // パスワード入力欄をリセット
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setShowPasswordSection(false);
+      
+    } catch (error: any) {
+      console.error('Password update error:', error);
+      
+      if (error instanceof AuthError) {
+        handleAuthError(error);
+      } else {
+        Alert.alert('パスワード変更エラー', error.message || 'パスワードの変更に失敗しました。');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAuthError = (error: AuthError) => {
+    switch (error.type) {
+      case AuthErrorType.INVALID_PASSWORD:
+        Alert.alert('現在のパスワードが正しくありません', 'パスワードをもう一度確認してください。');
+        break;
+        
+      case AuthErrorType.EMAIL_ALREADY_EXISTS:
+        Alert.alert('メールアドレスエラー', 'このメールアドレスは既に使用されています。');
+        break;
+        
+      case AuthErrorType.VALIDATION_ERROR:
+        Alert.alert('入力エラー', error.message);
+        break;
+        
+      case AuthErrorType.NETWORK_ERROR:
+        Alert.alert('ネットワークエラー', 'インターネット接続を確認してください。');
+        break;
+        
+      default:
+        Alert.alert('エラー', error.message || '操作に失敗しました。');
+        break;
+    }
+  };
+
+  const onCancel = () => {
+    navigation.goBack();
+  };
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      {/* 背景ブロブ */}
+      <View style={StyleSheet.absoluteFill}>
+        <Blob color={PALETTE.grape} size={180} top={-40} left={-40} />
+        <Blob color={PALETTE.teal} size={140} top={200} left={width * 0.7} />
+        <Blob color={PALETTE.coral} size={120} top={400} left={-30} />
+      </View>
+
+      {/* 固定ヘッダー */}
+      <LinearGradient
+        colors={[PALETTE.grape, PALETTE.blue]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.topBar}
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={20} color="#0B1220" />
+        </TouchableOpacity>
+        <Text style={styles.topBarTitle}>設定</Text>
+        <View style={{ width: 28 }} />
+      </LinearGradient>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+          {/* セクション: 基本設定の編集 */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>基本設定の編集</Text>
+
+            {/* ユーザー名 & アバター */}
+            <View style={styles.row}>
+              <View style={styles.avatar}>
+                <LinearGradient
+                  colors={[PALETTE.grape, PALETTE.blue]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Ionicons name="person" size={24} color="#0B1220" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>ユーザー名</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="アプリ内で表示されます"
+                  value={userName}
+                  onChangeText={setUserName}
+                />
+              </View>
+            </View>
+
+            {/* メールアドレス */}
+            <View style={styles.field}>
+              <Text style={styles.label}>メールアドレス</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="example@email.com"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            {/* パスワード変更セクション */}
+            <View style={styles.field}>
+              <TouchableOpacity
+                style={styles.passwordToggle}
+                onPress={() => setShowPasswordSection(!showPasswordSection)}
+              >
+                <Text style={styles.label}>パスワード変更</Text>
+                <Ionicons
+                  name={showPasswordSection ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color={PALETTE.subtle}
+                />
+              </TouchableOpacity>
+              
+              {showPasswordSection && (
+                <View style={styles.passwordSection}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="現在のパスワード"
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    secureTextEntry
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="新しいパスワード（6文字以上）"
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="新しいパスワード（確認用）"
+                    value={confirmNewPassword}
+                    onChangeText={setConfirmNewPassword}
+                    secureTextEntry
+                  />
+                  <TouchableOpacity
+                    style={[styles.passwordSaveBtn, !canSavePassword && styles.btnDisabled]}
+                    onPress={onSavePassword}
+                    disabled={!canSavePassword || isLoading}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.passwordSaveBtnText}>パスワード変更</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+
+
+            {/* アレルギー */}
+            <View style={styles.field}>
+              <Text style={styles.label}>アレルギー情報</Text>
+              <TextInput
+                style={[styles.input, styles.multiline]}
+                placeholder="例: 卵・乳・えび など"
+                value={allergies}
+                onChangeText={setAllergies}
+                multiline
+              />
+            </View>
+
+            {/* 食事ポリシー / タグ */}
+            <View style={styles.field}>
+              <Text style={styles.label}>食事ポリシー</Text>
+              <View style={styles.chipsWrap}>
+                {DIET_TAGS.map((tag) => {
+                  const selected = dietTags.includes(tag);
+                  return (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[styles.chip, selected && styles.chipSelected]}
+                      onPress={() => toggleDietTag(tag)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                        {tag}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* お弁当サイズ設定 */}
+            <View style={[styles.field, { paddingTop: 12 }]}>
+              <Text style={styles.sectionSubTitle}>お弁当サイズ設定</Text>
+              
+              {/* 外寸設定 */}
+              <View style={[styles.field, { paddingTop: 8 }]}>
+                <Text style={styles.label}>外寸 (cm)</Text>
+                <View style={styles.dimensionRow}>
+                  <View style={styles.dimensionField}>
+                    <Text style={styles.dimensionLabel}>横幅</Text>
+                    <TextInput
+                      style={styles.dimensionInput}
+                      placeholder="15.0"
+                      value={bentoWidth}
+                      onChangeText={setBentoWidth}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.dimensionField}>
+                    <Text style={styles.dimensionLabel}>縦</Text>
+                    <TextInput
+                      style={styles.dimensionInput}
+                      placeholder="20.0"
+                      value={bentoLength}
+                      onChangeText={setBentoLength}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.dimensionField}>
+                    <Text style={styles.dimensionLabel}>高さ</Text>
+                    <TextInput
+                      style={styles.dimensionInput}
+                      placeholder="5.0"
+                      value={bentoHeight}
+                      onChangeText={setBentoHeight}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* 容量設定 */}
+              <View style={[styles.field, { paddingTop: 8 }]}>
+                <Text style={styles.label}>容量 (ml)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="例：600"
+                  value={bentoCapacity}
+                  onChangeText={setBentoCapacity}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* 計算された容量表示 */}
+              {bentoWidth && bentoLength && bentoHeight && (
+                <View style={styles.calculatedInfo}>
+                  <Text style={styles.calculatedLabel}>
+                    計算容量: {(parseFloat(bentoWidth) * parseFloat(bentoLength) * parseFloat(bentoHeight)).toFixed(0)} cm³
+                  </Text>
+                  {bentoCapacity && (
+                    <Text style={styles.calculatedLabel}>
+                      容量効率: {((parseFloat(bentoCapacity) / (parseFloat(bentoWidth) * parseFloat(bentoLength) * parseFloat(bentoHeight))) * 100).toFixed(1)}%
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+                  {/* 容量設定 */}
+                  <View style={[styles.field, { paddingTop: 8 }]}>
+                    <Text style={styles.label}>容量 (ml)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="例：600"
+                      value={bentoCapacity}
+                      onChangeText={setBentoCapacity}
+                      keyboardType="numeric"
+                    />
+                  </View>
+
+                  {/* 外寸設定 */}
+                  <View style={[styles.field, { paddingTop: 8 }]}>
+                    <Text style={styles.label}>外寸 (cm)</Text>
+                    <View style={styles.dimensionRow}>
+                      <View style={styles.dimensionField}>
+                        <Text style={styles.dimensionLabel}>横幅</Text>
+                        <TextInput
+                          style={styles.dimensionInput}
+                          placeholder="15.0"
+                          value={bentoWidth}
+                          onChangeText={setBentoWidth}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View style={styles.dimensionField}>
+                        <Text style={styles.dimensionLabel}>縦</Text>
+                        <TextInput
+                          style={styles.dimensionInput}
+                          placeholder="20.0"
+                          value={bentoLength}
+                          onChangeText={setBentoLength}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View style={styles.dimensionField}>
+                        <Text style={styles.dimensionLabel}>高さ</Text>
+                        <TextInput
+                          style={styles.dimensionInput}
+                          placeholder="5.0"
+                          value={bentoHeight}
+                          onChangeText={setBentoHeight}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* 計算された容量表示 */}
+                  {bentoWidth && bentoLength && bentoHeight && (
+                    <View style={styles.calculatedInfo}>
+                      <Text style={styles.calculatedLabel}>
+                        計算容量: {(parseFloat(bentoWidth) * parseFloat(bentoLength) * parseFloat(bentoHeight)).toFixed(0)} cm³
+                      </Text>
+                      {bentoCapacity && (
+                        <Text style={styles.calculatedLabel}>
+                          容量効率: {((parseFloat(bentoCapacity) / (parseFloat(bentoWidth) * parseFloat(bentoLength) * parseFloat(bentoHeight))) * 100).toFixed(1)}%
+                        </Text>
+                      )}
+                    </View>
+                  )}
+            </View>
+
+            {/* 通知設定 */}
+            <View style={[styles.field, { paddingTop: 12 }]}>
+              <Text style={styles.sectionSubTitle}>通知設定</Text>
+
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>通知ON/OFF</Text>
+                <Switch
+                  value={reminderEnabled}
+                  onValueChange={setReminderEnabled}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>今日の予定</Text>
+                <Switch
+                  value={todayScheduleEnabled}
+                  onValueChange={setTodayScheduleEnabled}
+                />
+              </View>
+            </View>
+
+            {/* アプリの通知（全体） */}
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>アプリの通知</Text>
+              <Switch value={appPushEnabled} onValueChange={setAppPushEnabled} />
+            </View>
+
+            {/* アクションボタン */}
+            <View style={styles.actions}>
+              <TouchableOpacity 
+                style={styles.btnGhost} 
+                onPress={onCancel}
+                disabled={isLoading}
+              >
+                <Text style={styles.btnGhostText}>キャンセル</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPrimary, (!canSave || isLoading) && styles.btnDisabled]}
+                onPress={onSave}
+                disabled={!canSave || isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.btnPrimaryText}>保存</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* ローディング画面 */}
+      {isLoadingProfile && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={PALETTE.grape} />
+          <Text style={styles.loadingText}>プロフィール読み込み中...</Text>
+        </View>
+      )}
+    </SafeAreaView>
+  );
+};
+
+/* ---------- UI Parts ---------- */
+const Blob: React.FC<{ color: string; size: number; top: number; left: number }> = ({ color, size, top, left }) => (
+  <View
+    style={{
+      position: "absolute",
+      top,
+      left,
+      width: size,
+      height: size * 0.8,
+      backgroundColor: color,
+      opacity: 0.15,
+      borderRadius: size * 0.6,
+    }}
+  />
+);
+
+export default SettingsScreen;
+
+/** ===== Palette ===== */
+const PALETTE = {
+  bg: "#FFFFFF",
+  ink: "#171717",
+  subtle: "#6B7280",
+  stroke: "#ECECEC",
+  coral: "#FF7A6E",
+  yellow: "#FFD54A",
+  teal: "#44D1C9",
+  blue: "#6FB7FF",
+  grape: "#B89CFF",
+  good: "#22A06B",
+  bad: "#E25555",
+};
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
+  topBar: {
+    position: "absolute",
+    top: 44,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 14,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  topBarTitle: { fontSize: 18, fontWeight: "800", color: "#0B1220" },
+  backBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFFDD",
+  },
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 80 },
+  card: {
+    backgroundColor: PALETTE.bg,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    marginBottom: 16,
+  },
+  cardTitle: { fontSize: 16, fontWeight: "700", marginBottom: 16, color: PALETTE.ink },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: PALETTE.blue + "20",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  field: { marginBottom: 12 },
+  label: { fontSize: 12, color: PALETTE.subtle, marginBottom: 6, fontWeight: "600" },
+  input: {
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: PALETTE.ink,
+    backgroundColor: "#fff",
+  },
+  multiline: {
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  chipsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  chipSelected: {
+    borderColor: PALETTE.grape,
+    backgroundColor: PALETTE.grape + "15",
+  },
+  chipText: { fontSize: 13, color: PALETTE.ink, fontWeight: "600" },
+  chipTextSelected: { color: PALETTE.grape, fontWeight: "700" },
+  segmentWrap: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  segmentItem: {
+    flex: 1,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  segmentItemSelected: {
+    borderColor: PALETTE.teal,
+    backgroundColor: PALETTE.teal + "15",
+  },
+  segmentText: { fontSize: 13, color: PALETTE.ink, fontWeight: "600" },
+  segmentTextSelected: { color: PALETTE.teal, fontWeight: "700" },
+  helperText: { marginTop: 6, fontSize: 12, color: PALETTE.subtle },
+  sectionSubTitle: { fontSize: 14, fontWeight: "700", color: PALETTE.ink, marginBottom: 8 },
+  switchRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.stroke,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  switchLabel: { fontSize: 14, color: PALETTE.ink, fontWeight: "600" },
+  actions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 20,
+  },
+  btnGhost: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  btnGhostText: { color: PALETTE.ink, fontWeight: "700" },
+  btnPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: PALETTE.grape,
+  },
+  btnDisabled: { opacity: 0.4 },
+  btnPrimaryText: { color: "#fff", fontWeight: "700" },
+  passwordToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  passwordSection: {
+    marginTop: 12,
+    gap: 12,
+  },
+  passwordSaveBtn: {
+    backgroundColor: PALETTE.coral,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  passwordSaveBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: PALETTE.subtle,
+    fontWeight: "600",
+  },
+  // 詳細サイズ設定用スタイル
+  dimensionRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  dimensionField: {
+    flex: 1,
+  },
+  dimensionLabel: {
+    fontSize: 12,
+    color: PALETTE.subtle,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  dimensionInput: {
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: PALETTE.ink,
+    backgroundColor: "#fff",
+    textAlign: "center",
+  },
+  calculatedInfo: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: PALETTE.teal + "10",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.teal + "30",
+  },
+  calculatedLabel: {
+    fontSize: 12,
+    color: PALETTE.teal,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+});

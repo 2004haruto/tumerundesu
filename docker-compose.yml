@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # MySQL データベース
+  mysql:
+    image: mysql:8.0
+    container_name: tumerundesu_mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: tumerundesu_db
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/sql:/docker-entrypoint-initdb.d
+    networks:
+      - tumerundesu_network
+    restart: unless-stopped
+
+  # Node.js バックエンド API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tumerundesu_backend
+    environment:
+      NODE_ENV: development
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: tumerundesu_db
+      DB_USER: root
+      DB_PASSWORD: root
+      JWT_SECRET: your_jwt_secret_key_here
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - mysql
+    networks:
+      - tumerundesu_network
+    restart: unless-stopped
+    command: npm run dev
+
+  # phpMyAdmin（オプション - データベース管理用）
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: tumerundesu_phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: app_user
+      PMA_PASSWORD: app_password
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - tumerundesu_network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  tumerundesu_network:
+    driver: bridge

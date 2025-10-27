@@ -1,29 +1,113 @@
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
+  View,
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { useAuth } from '../contexts/AuthContext';
+import { AuthError, AuthErrorType } from '../services/api';
+import { InputValidator } from '../utils/validation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 const LoginScreen = ({ navigation }: Props) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
 
-  const handleLogin = (): void => {
-    if (!email || !password) {
-      Alert.alert('エラー', 'メールアドレスとパスワードを入力してください。');
+  const handleLogin = async (): Promise<void> => {
+    // 入力バリデーション
+    const validation = InputValidator.validateLoginInput(email, password);
+    if (!validation.isValid) {
+      Alert.alert('入力エラー', validation.message);
       return;
     }
-    // ここにログイン処理を実装
-    console.log('Email:', email);
-    console.log('Password:', password);
+
+    setIsLoading(true);
+
+    try {
+      await login({
+        email: email.trim(),
+        password: password,
+      });
+      // ログイン成功時は AuthProvider が自動的に認証済み画面に遷移する
+    } catch (error: any) {
+      // 開発時のみデバッグログを出力（ネットワークエラー以外は出力しない）
+      if (__DEV__ && error instanceof AuthError && error.type === AuthErrorType.NETWORK_ERROR) {
+        console.log('Login network error:', error.message);
+      }
+      
+      if (error instanceof AuthError) {
+        handleAuthError(error);
+      } else {
+        Alert.alert('ログインエラー', error.message || 'ログインに失敗しました。');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAuthError = (error: AuthError) => {
+    switch (error.type) {
+      case AuthErrorType.USER_NOT_FOUND:
+        Alert.alert(
+          'アカウントが見つかりません', 
+          'このメールアドレスで登録されたアカウントが見つかりません。\n\n・メールアドレスをもう一度確認してください\n・アカウントをお持ちでない場合は新規登録してください',
+          [
+            { text: 'OK', style: 'default' },
+            { text: '新規登録', style: 'default', onPress: () => navigation.navigate('SignUp') }
+          ]
+        );
+        break;
+        
+      case AuthErrorType.INVALID_PASSWORD:
+        Alert.alert(
+          'パスワードが正しくありません',
+          'パスワードをもう一度確認してください。\n\n・大文字・小文字を正しく入力していますか？\n・全角文字が含まれていませんか？',
+          [
+            { text: 'OK', style: 'default' },
+            { text: 'パスワードを忘れた', style: 'default', onPress: () => handleForgotPassword() }
+          ]
+        );
+        break;
+        
+      case AuthErrorType.NETWORK_ERROR:
+        Alert.alert(
+          'ネットワークエラー',
+          'インターネット接続を確認してください。\n\n・Wi-Fiまたはモバイルデータ通信がオンになっていますか？\n・サーバーに接続できない場合があります',
+          [
+            { text: 'OK', style: 'default' },
+            { text: '再試行', style: 'default', onPress: handleLogin }
+          ]
+        );
+        break;
+        
+      case AuthErrorType.VALIDATION_ERROR:
+        Alert.alert('入力エラー', error.message);
+        break;
+        
+      default:
+        Alert.alert('ログインエラー', error.message || 'ログインに失敗しました。');
+        break;
+    }
+  };
+
+  const handleForgotPassword = () => {
+    Alert.alert(
+      'パスワードリセット', 
+      '現在、パスワードリセット機能は開発中です。\n\n新しいアカウントを作成するか、正しいパスワードでログインしてください。',
+      [
+        { text: 'OK', style: 'default' },
+        { text: '新規登録', style: 'default', onPress: () => navigation.navigate('SignUp') }
+      ]
+    );
   };
 
   return (
@@ -46,10 +130,15 @@ const LoginScreen = ({ navigation }: Props) => {
           secureTextEntry
         />
         <TouchableOpacity 
-          style={styles.loginButton}
+          style={[styles.loginButton, isLoading && styles.disabledButton]}
           onPress={handleLogin}
+          disabled={isLoading}
         >
-          <Text style={styles.loginButtonText}>ログイン</Text>
+          {isLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.loginButtonText}>ログイン</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.additionalButtonsContainer}>
@@ -62,10 +151,7 @@ const LoginScreen = ({ navigation }: Props) => {
 
           <TouchableOpacity 
             style={styles.textButton}
-            onPress={() => {
-              // ここにパスワードリセット画面への遷移処理を実装
-              console.log('パスワードリセットへ');
-            }}
+            onPress={handleForgotPassword}
           >
             <Text style={styles.textButtonText}>パスワードを忘れた方はこちら</Text>
           </TouchableOpacity>
@@ -122,6 +208,9 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 14,
     textDecorationLine: 'underline',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });
 

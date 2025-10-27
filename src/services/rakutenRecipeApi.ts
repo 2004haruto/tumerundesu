@@ -1,0 +1,1494 @@
+﻿//
+//
+
+// Rakuten Recipe API + schema.org recipe extraction service
+const RAKUTEN_APP_ID = process.env.EXPO_PUBLIC_RAKUTEN_APP_ID || 'YOUR_RAKUTEN_APP_ID';
+const RAKUTEN_BASE_URL = 'https://app.rakuten.co.jp/services/api/Recipe';
+
+// Rate control settings
+const RATE_LIMIT_DELAY = 1500; // 1.5 seconds interval
+const MAX_CACHE_SIZE = 100; //
+const CACHE_EXPIRY = 24 * 60 * 60 * 1000; //
+
+//
+export interface RakutenRecipeBasic {
+  recipeId: string;
+  recipeTitle: string;
+  recipeUrl: string;
+  foodImageUrl: string;
+  recipeMaterial: string[];
+  recipeDescription?: string;
+  recipeCost?: string;
+  recipeIndication?: string; //
+  categoryId?: string;
+}
+
+export interface SchemaOrgRecipe {
+  name: string;
+  description?: string;
+  image?: string;
+  video?: string;  //
+  recipeIngredient: string[];
+  recipeInstructions: RecipeInstruction[];
+  totalTime?: string;
+  prepTime?: string;
+  cookTime?: string;
+  recipeYield?: string;
+  nutrition?: {
+    calories?: string;
+  };
+}
+
+export interface RecipeInstruction {
+  text: string;
+  name?: string;
+  url?: string;
+  image?: string;
+  video?: string;  //
+  images?: string[];  //
+}
+
+export interface ProcessedJapaneseRecipe {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  sourceUrl: string;
+  ingredients: {
+    name: string;
+    amount: string;
+  }[];
+  instructions: {
+    stepNumber: number;
+    text: string;
+    image?: string;
+    video?: string;  //
+    images?: string[];  //
+  }[];
+  cookingTime?: string;
+  servings?: string;
+  difficulty?: string;
+  cost?: string;
+  nutrition?: {
+    calories?: string;
+  };
+  source: 'rakuten';
+  createdAt: number;
+}
+
+//
+class RecipeCache {
+  private cache = new Map<string, { data: any; timestamp: number }>();
+
+  set(key: string, data: any): void {
+    //
+    if (this.cache.size >= MAX_CACHE_SIZE) {
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+    
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+
+  get(key: string): any | null {
+    const item = this.cache.get(key);
+    if (!item) return null;
+
+    //
+    if (Date.now() - item.timestamp > CACHE_EXPIRY) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return item.data;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+//
+class RateLimiter {
+  private lastRequestTime = 0;
+
+  async waitIfNeeded(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+      const waitTime = RATE_LIMIT_DELAY - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
+  }
+}
+
+export class RakutenRecipeApiService {
+  private cache = new RecipeCache();
+  private rateLimiter = new RateLimiter();
+
+  /**
+   * 﨟槫翁 郢昴・繝ｻ・ｽ繝ｻ・ｽ郢昴・繝ｻ・ｽ繝ｻ・ｽ騾包ｽｨ: 郢ｧ・ｫ郢昴・繝ｻ・ｽ繝ｻ・ｽ郢晢ｽｪ1-50郢ｧ蜻育粟驍擾ｽ｢邵ｺ蜉ｱ窶ｻ郢ｧ・ｭ郢晢ｽｼ郢晢ｽｯ郢晢ｽｼ郢晏ｳｨ・定惺・ｫ郢ｧﾂ郢ｧ・ｫ郢昴・繝ｻ・ｽ繝ｻ・ｽ郢晢ｽｪ郢ｧ蝣､髻ｳ陞ｳ繝ｻ
+   */
+  async debugCategoryExploration(keyword: string = '邵ｺ髦ｪ・・ｸｺ繝ｻ繝ｻ・ｽ繝ｻ・ｽ'): Promise<void> {
+    
+    
+    
+    
+    
+    const keywords = this.generateKeywordVariations(keyword);
+    const foundCategories: { categoryId: number; matchCount: number; sampleTitle: string }[] = [];
+
+    for (let categoryId = 1; categoryId <= 50; categoryId++) {
+      try {
+        const recipes = await this.getRecipesByCategory(categoryId.toString());
+        
+        if (recipes.length > 0) {
+          //
+          const matches = recipes.filter(recipe => {
+            const searchText = `${recipe.recipeTitle} ${recipe.recipeMaterial?.join(' ')} ${recipe.recipeDescription || ''}`.toLowerCase();
+            return keywords.some(kw => searchText.includes(kw.toLowerCase()));
+          });
+
+          if (matches.length > 0) {
+            foundCategories.push({
+              categoryId,
+              matchCount: matches.length,
+              sampleTitle: matches[0].recipeTitle
+            });
+            
+          } else {
+
+          }
+        } else {
+          
+        }
+        
+        //
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+      } catch (error: any) {
+        
+        
+        //
+        if (error?.message?.includes('429')) {
+          
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } else {
+          //
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+
+    
+    if (foundCategories.length > 0) {
+      
+      foundCategories.forEach(cat => {
+        
+        
+      });
+
+    } else {
+      
+      
+    }
+    
+  }
+
+  //
+  async searchRecipesByKeyword(keyword: string, categoryId?: string): Promise<RakutenRecipeBasic[]> {
+    await this.rateLimiter.waitIfNeeded();
+
+    try {
+      console.log('🔍 検索キーワード:', keyword);
+      
+      // キーワードバリエーションを生成
+      const keywordVariations = this.generateKeywordVariations(keyword);
+      console.log('🔄 キーワードバリエーション:', keywordVariations);
+      
+      // レート制限を避けるため、適度な数のカテゴリーから検索
+      // 最も関連性の高いカテゴリーを使用
+      const relevantCategories = this.getRelevantCategoriesForKeyword(keyword);
+      const categories = categoryId ? [categoryId] : relevantCategories.slice(0, 4); // 最大4カテゴリーに制限
+      console.log('📂 検索カテゴリー:', categories, 'から検索');
+      
+      const allRecipes: RakutenRecipeBasic[] = [];
+
+      // 複数のカテゴリーからレシピを取得（レート制限対策）
+      for (const catId of categories) {
+        try {
+          const url = `${RAKUTEN_BASE_URL}/CategoryRanking/20170426?` +
+            `applicationId=${RAKUTEN_APP_ID}&` +
+            `categoryId=${catId}&` +
+            `format=json`;
+          
+          console.log('📡 カテゴリー', catId, 'からレシピを取得中...');
+          
+          const response = await fetch(url);
+          console.log('📥 レスポンスステータス:', response.status);
+          
+          if (!response.ok) {
+            console.error('❌ API エラー:', response.status, response.statusText);
+            if (response.status === 429) {
+              console.warn('⚠️ レート制限に達しました。3秒待機します...');
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            continue;
+          }
+
+          const data = await response.json();
+          console.log('📊 カテゴリー', catId, 'から取得:', data.result?.length || 0, '件');
+          
+          const recipes: RakutenRecipeBasic[] = data.result?.map((item: any) => ({
+            recipeId: item.recipeId,
+            recipeTitle: item.recipeTitle,
+            recipeUrl: item.recipeUrl,
+            foodImageUrl: item.foodImageUrl,
+            recipeMaterial: item.recipeMaterial || [],
+            recipeDescription: item.recipeDescription,
+            recipeCost: item.recipeCost,
+            recipeIndication: item.recipeIndication,
+            categoryId: item.categoryId
+          })) || [];
+          
+          allRecipes.push(...recipes);
+          
+          // レート制限対策: 各カテゴリー間で2秒待機
+          if (catId !== categories[categories.length - 1]) {
+            console.log('⏳ 次のカテゴリーまで2秒待機...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (error) {
+          console.error(`❌ カテゴリー ${catId} の取得エラー:`, error);
+          // エラーが発生しても続行
+          continue;
+        }
+      }
+
+      console.log('📚 全レシピ数（重複あり）:', allRecipes.length);
+
+      // 重複を除去
+      const uniqueRecipes = Array.from(
+        new Map(allRecipes.map(recipe => [recipe.recipeId, recipe])).values()
+      );
+
+      console.log('✨ ユニークなレシピ数:', uniqueRecipes.length);
+
+      // キーワードとの関連性でフィルタリング＆スコアリング
+      const scoredRecipes = uniqueRecipes.map(recipe => {
+        const score = this.calculateRelevanceScore(
+          {
+            ...recipe,
+            title: recipe.recipeTitle,
+            ingredients: recipe.recipeMaterial || [],
+            description: recipe.recipeDescription || ''
+          } as any,
+          keyword,
+          keywordVariations
+        );
+        
+        return { recipe, score };
+      });
+
+      console.log('🎯 スコア付きレシピ（上位5件）:', scoredRecipes
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(s => ({
+          title: s.recipe.recipeTitle,
+          score: s.score
+        }))
+      );
+
+      // スコアが0より大きいものだけをフィルタリング
+      const filteredAndSorted = scoredRecipes
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(item => {
+          console.log('✅ マッチしたレシピ:', item.recipe.recipeTitle, 'スコア:', item.score);
+          return item.recipe;
+        });
+
+      console.log('✅ 最終結果数:', filteredAndSorted.length);
+      if (filteredAndSorted.length > 0) {
+        console.log('📋 返却するレシピ（上位5件）:');
+        filteredAndSorted.slice(0, 5).forEach((r, i) => {
+          console.log(`  ${i + 1}. ${r.recipeTitle}`);
+        });
+      } else {
+        console.warn('⚠️ キーワード "' + keyword + '" に一致するレシピが見つかりませんでした');
+        console.log('� 検索したバリエーション:', keywordVariations);
+      }
+
+      return filteredAndSorted;
+    } catch (error) {
+      console.error('❌ Recipe search error:', error);
+      return [];
+    }
+  }
+
+  //
+  async getRecipesByCategory(categoryId: string = '30', page: number = 1): Promise<RakutenRecipeBasic[]> {
+    const cacheKey = `category_${categoryId}_${page}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      
+      return cached;
+    }
+
+    await this.rateLimiter.waitIfNeeded();
+
+    try {
+      const url = `${RAKUTEN_BASE_URL}/CategoryRanking/20170426?` +
+        `applicationId=${RAKUTEN_APP_ID}&` +
+        `categoryId=${categoryId}&` +
+        `page=${page}&` +
+        `format=json`;
+
+      
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`隶鯉ｽｽ陞滂ｽｩAPI 郢ｧ・ｨ郢晢ｽｩ郢晢ｽｼ: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const recipes: RakutenRecipeBasic[] = data.result?.map((item: any) => ({
+        recipeId: item.recipeId,
+        recipeTitle: item.recipeTitle,
+        recipeUrl: item.recipeUrl,
+        foodImageUrl: item.foodImageUrl,
+        recipeMaterial: item.recipeMaterial || [],
+        recipeDescription: item.recipeDescription,
+        recipeCost: item.recipeCost,
+        recipeIndication: item.recipeIndication,
+        categoryId: item.categoryId
+      })) || [];
+
+      this.cache.set(cacheKey, recipes);
+      
+      
+      return recipes;
+    } catch (error) {
+      
+      return [];
+    }
+  }
+
+  //
+  async extractSchemaFromRecipeUrl(url: string): Promise<SchemaOrgRecipe | null> {
+    const cacheKey = `schema_${url}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    await this.rateLimiter.waitIfNeeded();
+
+    try {
+      
+      
+      //
+      //
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`郢晢ｽｬ郢ｧ・ｷ郢晁ｲｻ・ｿ・ｽE郢晢ｽｼ郢ｧ・ｸ陷ｿ髢・ｾ蜉ｱ縺顔ｹ晢ｽｩ郢晢ｽｼ: ${response.status}`);
+      }
+
+      const html = await response.text();
+      
+      //
+      const extractVideoUrls = (html: string): string[] => {
+        const videoUrls: string[] = [];
+        
+        //
+        const youtubePatterns = [
+          /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/g,
+          /youtu\.be\/([a-zA-Z0-9_-]{11})/g,
+          /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/g
+        ];
+        
+        youtubePatterns.forEach(pattern => {
+          let match;
+          while ((match = pattern.exec(html)) !== null) {
+            const videoId = match[1];
+            if (videoId && videoId.length === 11) {
+              videoUrls.push('https://www.youtube.com/watch?v=' + videoId);
+            }
+          }
+        });
+        
+        //
+        const videoElementMatches = html.match(/<video[^>]+>/g);
+        if (videoElementMatches) {
+          videoElementMatches.forEach(videoTag => {
+            const srcMatch = videoTag.match(/src=["']([^"']+)["']/);
+            if (srcMatch && srcMatch[1]) {
+              const src = srcMatch[1];
+              //
+              if (/\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v)(\?.*)?$/i.test(src)) {
+                videoUrls.push(src);
+              }
+            }
+          });
+        }
+        
+        //
+        const vimeoMatches = html.match(/vimeo\.com\/(\d+)/g);
+        if (vimeoMatches) {
+          videoUrls.push(...vimeoMatches);
+        }
+        
+        //
+        const directVideoMatches = html.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v)(\?[^\s"'<>]*)?/g);
+        if (directVideoMatches) {
+          const cookingRelatedVideos = directVideoMatches.filter(url => {
+            const cookingKeywords = ['cook', 'recipe', 'step', 'making', 'tutorial', 'how-to'];
+            return cookingKeywords.some(keyword => 
+              url.toLowerCase().includes(keyword) || 
+              html.toLowerCase().includes(keyword)
+            );
+          });
+          videoUrls.push(...cookingRelatedVideos);
+        }
+        
+        return [...new Set(videoUrls)].slice(0, 2); //
+      };
+
+      //
+      const jsonLdMatch = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+      
+      if (jsonLdMatch) {
+        for (const match of jsonLdMatch) {
+          try {
+            const jsonContent = match.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
+            const schema = JSON.parse(jsonContent);
+            
+            //
+            const recipe = Array.isArray(schema) 
+              ? schema.find(item => item['@type'] === 'Recipe')
+              : schema['@type'] === 'Recipe' ? schema : null;
+
+            if (recipe) {
+              //
+              const detectedVideos = extractVideoUrls(html);
+              const mainVideo = this.extractVideoUrl(recipe.video || recipe['@graph']?.video) || detectedVideos[0];
+              
+              const processedRecipe: SchemaOrgRecipe = {
+                name: recipe.name,
+                description: recipe.description,
+                image: this.extractBestImage(recipe.image),
+                video: mainVideo,
+                recipeIngredient: Array.isArray(recipe.recipeIngredient) ? recipe.recipeIngredient : [],
+                recipeInstructions: this.processInstructions(recipe.recipeInstructions, html),
+                totalTime: recipe.totalTime,
+                prepTime: recipe.prepTime,
+                cookTime: recipe.cookTime,
+                recipeYield: recipe.recipeYield,
+                nutrition: recipe.nutrition
+              };
+              
+              console.log('﨟樣％ 郢晢ｽ｡郢昴・繝ｻ・ｽ繝ｻ・ｽ郢ｧ・｢郢ｧ・ｳ郢晢ｽｳ郢昴・繝ｻ・ｽ繝ｻ・ｽ郢昴・繝ｻ・ｽ繝ｻ・ｽ繝ｻ・ｽE驍ｨ蜈域｣｡:', {
+                recipeName: recipe.name,
+                mainVideo,
+                detectedVideosCount: detectedVideos.length,
+                detectedVideos: detectedVideos,
+                mainImage: this.extractBestImage(recipe.image),
+                instructionsWithMedia: recipe.recipeInstructions?.filter(inst => 
+                  inst.image || inst.video || inst.images
+                ).length || 0
+              });
+
+              this.cache.set(cacheKey, processedRecipe);
+              
+              return processedRecipe;
+            }
+          } catch (parseError) {
+            
+          }
+        }
+      }
+
+      //
+      const microdataRecipe = this.extractMicrodata(html);
+      if (microdataRecipe) {
+        this.cache.set(cacheKey, microdataRecipe);
+        return microdataRecipe;
+      }
+
+      
+      return null;
+    } catch (error) {
+      
+      return null;
+    }
+  }
+
+  //
+  private processInstructions(instructions: any, html?: string): RecipeInstruction[] {
+    if (!instructions) return [];
+    
+    if (Array.isArray(instructions)) {
+      return instructions.map((inst, index) => {
+        // HTMLエンティティをデコード
+        const decodeHtmlEntities = (text: string): string => {
+          if (!text) return text;
+          return text
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#039;/g, "'");
+        };
+        
+        // Schema.org JSONデータからの画像を優先(各手順専用の画像)
+        let stepImage: string | undefined = undefined;
+        if (inst.image) {
+          const rawImage = this.extractBestImage(inst.image);
+          stepImage = rawImage ? decodeHtmlEntities(rawImage) : undefined;
+        }
+        
+        // 追加画像も処理(ほとんどのレシピでは空配列)
+        const additionalImages: string[] = [];
+        if (inst.images && Array.isArray(inst.images)) {
+          inst.images.forEach((img: any) => {
+            const extracted = this.extractBestImage(img);
+            if (extracted) {
+              additionalImages.push(decodeHtmlEntities(extracted));
+            }
+          });
+        }
+        
+        return {
+          text: typeof inst === 'string' ? inst : inst.text || inst.name || '',
+          name: inst.name,
+          url: inst.url,
+          image: stepImage,
+          video: this.extractVideoUrl(inst.video),
+          images: additionalImages
+        };
+      });
+    }
+        if (typeof instructions === 'string') {
+      return [{ text: instructions }];
+    }
+    
+    return [{ 
+      text: instructions.text || instructions.name || '',
+      image: this.extractBestImage(instructions.image),
+      video: this.extractVideoUrl(instructions.video),
+      images: this.extractMultipleImages(instructions.images || instructions.image)
+    }];
+  }
+
+  //
+  private extractBestImage(imageData: any): string | undefined {
+    if (!imageData) return undefined;
+    
+    const validateImageUrl = (url: string): boolean => {
+      if (!url || typeof url !== 'string') return false;
+      
+      //
+      if (!url.startsWith('http')) return false;
+      
+      //
+      const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i;
+      if (!imageExtensions.test(url)) return false;
+      
+      //
+      const excludePatterns = [
+        /logo/i,           //
+        /banner/i,         //
+        /ad[s]?/i,        //
+        /avatar/i,         //
+        /profile/i,        //
+        /icon/i,           //
+        /thumbnail/i,      //
+        /thumb/i,          //
+        /button/i,         //
+        /decoration/i,     //
+        /background/i,     //
+        /\d{1,2}x\d{1,2}/i,//
+        /blank/i,          //
+        /empty/i,          //
+        /spacer/i,         //
+        /transparent/i,    //
+        /clear/i,          //
+        /1x1/i,           //
+        /pixel/i,         //
+        /tracking/i,      //
+        /analytics/i,     //
+        /beacon/i,        //
+        /\.(gif|svg)$/i   //
+      ];
+      
+      //
+      const suspiciousPatterns = [
+        /^[a-f0-9]{8,}$/i,  //
+        /^pixel/i,          //
+        /^spacer/i,         //
+        /^blank/i           //
+      ];
+      
+      const fileName = url.split('/').pop()?.split('?')[0] || '';
+      const hasSuspiciousName = suspiciousPatterns.some(pattern => pattern.test(fileName));
+      
+      return !excludePatterns.some(pattern => pattern.test(url)) && !hasSuspiciousName;
+    };
+    
+    if (typeof imageData === 'string') {
+      return validateImageUrl(imageData) ? imageData : undefined;
+    }
+    
+    if (Array.isArray(imageData)) {
+      //
+      const validImages = imageData
+        .filter(img => typeof img === 'string' && validateImageUrl(img))
+        .sort((a, b) => {
+          //
+          const highQualityKeywords = ['large', 'high', 'original', 'full', '1024', '800', '600'];
+          const aScore = highQualityKeywords.reduce((score, keyword) => 
+            a.toLowerCase().includes(keyword) ? score + 1 : score, 0);
+          const bScore = highQualityKeywords.reduce((score, keyword) => 
+            b.toLowerCase().includes(keyword) ? score + 1 : score, 0);
+          return bScore - aScore;
+        });
+      
+      return validImages[0];
+    }
+    
+    if (imageData.url && validateImageUrl(imageData.url)) {
+      return imageData.url;
+    }
+    
+    return undefined;
+  }
+
+  //
+  private extractVideoUrl(videoData: any): string | undefined {
+    if (!videoData) return undefined;
+    
+    const validateVideoUrl = (url: string): boolean => {
+      if (!url || typeof url !== 'string') return false;
+      
+      const validVideoPatterns = [
+        /youtube\.com\/watch\?v=/i,
+        /youtu\.be\//,
+        /youtube\.com\/embed\//,
+        /vimeo\.com\/\d+/i,
+        /dailymotion\.com/i,
+        /\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)(\?.*)?$/i
+      ];
+      
+      return validVideoPatterns.some(pattern => pattern.test(url));
+    };
+    
+    if (typeof videoData === 'string') {
+      return validateVideoUrl(videoData) ? videoData : undefined;
+    }
+    
+    if (Array.isArray(videoData)) {
+      const validVideos = videoData.filter(video => 
+        typeof video === 'string' && validateVideoUrl(video)
+      );
+      return validVideos[0];
+    }
+    
+    if (videoData.contentUrl && validateVideoUrl(videoData.contentUrl)) {
+      return videoData.contentUrl;
+    }
+    
+    if (videoData.url && validateVideoUrl(videoData.url)) {
+      return videoData.url;
+    }
+    
+    //
+    if (videoData.embedUrl && validateVideoUrl(videoData.embedUrl)) {
+      return videoData.embedUrl;
+    }
+    
+    return undefined;
+  }
+
+  //
+  private extractMultipleImages(imageData: any): string[] {
+    if (!imageData) return [];
+    
+    if (typeof imageData === 'string') {
+      return [imageData];
+    }
+    
+    if (Array.isArray(imageData)) {
+      return imageData.filter(img => typeof img === 'string');
+    }
+    
+    return [];
+  }
+
+  //
+  private extractStepImages(html: string, keywords: string[]): string[] {
+    const images: string[] = [];
+    
+    try {
+      //
+      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/g);
+      if (imgMatches) {
+        for (const match of imgMatches) {
+          const srcMatch = match.match(/src=["']([^"']+)["']/);
+          if (srcMatch && srcMatch[1]) {
+            const imgUrl = srcMatch[1];
+            
+            //
+            const isStepRelated = 
+              //
+              imgUrl.includes('step') || 
+              imgUrl.includes('cook') || 
+              imgUrl.includes('recipe') ||
+              imgUrl.includes('process') ||
+              imgUrl.includes('making') ||
+              //
+              /step[_-]?\d+/i.test(imgUrl) ||
+              //
+              keywords.some(keyword => 
+                keyword.length > 2 && 
+                imgUrl.toLowerCase().includes(keyword.toLowerCase())
+              );
+            
+            //
+            const shouldExclude =
+              /logo/i.test(imgUrl) ||
+              /banner/i.test(imgUrl) ||
+              /ad[s]?/i.test(imgUrl) ||
+              /avatar/i.test(imgUrl) ||
+              /profile/i.test(imgUrl) ||
+              /icon/i.test(imgUrl) ||
+              /button/i.test(imgUrl) ||
+              /navigation/i.test(imgUrl) ||
+              /header/i.test(imgUrl) ||
+              /footer/i.test(imgUrl) ||
+              /sidebar/i.test(imgUrl) ||
+              //
+              /\d{1,2}x\d{1,2}/i.test(imgUrl) ||
+              //
+              /facebook|twitter|instagram|line/i.test(imgUrl);
+            
+            if (isStepRelated && !shouldExclude) {
+              images.push(imgUrl);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      
+    }
+    
+    //
+    return [...new Set(images)].slice(0, 3);
+  }
+
+  //
+  private extractStepSpecificImages(html: string, stepNumber: number, keywords: string[]): string[] {
+    const images: string[] = [];
+    
+    try {
+      //
+      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/g);
+      if (imgMatches) {
+        for (const match of imgMatches) {
+          const srcMatch = match.match(/src=["']([^"']+)["']/);
+          if (srcMatch && srcMatch[1]) {
+            const imgUrl = srcMatch[1];
+            
+            const stepNumberPatterns = [
+              new RegExp('step[_-]?0*' + stepNumber + '[^\\d]', 'i'),
+              new RegExp('手順[_-]?0*' + stepNumber + '[^\\d]', 'i'),
+              new RegExp('工程[_-]?0*' + stepNumber + '[^\\d]', 'i'),
+              new RegExp(stepNumber + '[_-]?(step|手順|工程)', 'i')
+            ];
+            
+            const hasStepNumber = stepNumberPatterns.some(pattern => pattern.test(imgUrl));
+            
+            //
+            const hasRelevantKeyword = keywords.length > 0 && keywords.some(keyword => {
+              if (keyword.length < 2) return false;
+              //
+              return imgUrl.toLowerCase().includes(keyword.toLowerCase()) ||
+                     match.toLowerCase().includes(keyword.toLowerCase()); //
+            });
+            
+            //
+            const hasStepKeyword = 
+              /step|cook|recipe|process|making|preparation/i.test(imgUrl);
+            
+            //
+            const shouldExclude =
+              /logo|banner|ad[s]?|avatar|profile|icon|button/i.test(imgUrl) ||
+              /navigation|header|footer|sidebar|menu/i.test(imgUrl) ||
+              /facebook|twitter|instagram|line|social/i.test(imgUrl) ||
+              /\d{1,2}x\d{1,2}/i.test(imgUrl) ||
+              /thumbnail|thumb/i.test(imgUrl) ||
+              //
+              imgUrl.includes('main') || imgUrl.includes('hero') ||
+              imgUrl.includes('featured') || imgUrl.includes('cover');
+            
+            //
+            const isStepSpecific = (hasStepNumber || hasRelevantKeyword || hasStepKeyword) && !shouldExclude;
+            
+            if (isStepSpecific) {
+              images.push(imgUrl);
+            }
+          }
+        }
+      }
+      
+      console.log('🔍 手順' + stepNumber + 'の画像検出結果:', {
+        keywords,
+        foundImages: images.length,
+        images: images.slice(0, 2)
+      });
+      
+    } catch (error) {
+      
+    }
+    
+    //
+    return [...new Set(images)].slice(0, 2);
+  }
+
+  //
+  private extractMicrodata(html: string): SchemaOrgRecipe | null {
+    try {
+      //
+      //
+      const nameMatch = html.match(/itemprop=["']name["'][^>]*>([^<]+)/i);
+      const descMatch = html.match(/itemprop=["']description["'][^>]*>([^<]+)/i);
+      
+      if (nameMatch) {
+        return {
+          name: nameMatch[1],
+          description: descMatch?.[1] || '',
+          recipeIngredient: [],
+          recipeInstructions: []
+        };
+      }
+    } catch (error) {
+      
+    }
+    
+    return null;
+  }
+
+  //
+  async getProcessedRecipes(categoryId: string = '30', maxRecipes: number = 5): Promise<ProcessedJapaneseRecipe[]> {
+    const basicRecipes = await this.getRecipesByCategory(categoryId);
+    return this.processRecipeList(basicRecipes, maxRecipes);
+  }
+
+  //
+  private async processRecipeList(basicRecipes: RakutenRecipeBasic[], maxRecipes: number = 5): Promise<ProcessedJapaneseRecipe[]> {
+    const processedRecipes: ProcessedJapaneseRecipe[] = [];
+    const globalUsedImages = new Set<string>(); //
+
+    
+
+    for (const basic of basicRecipes.slice(0, maxRecipes)) {
+      try {
+        const schema = await this.extractSchemaFromRecipeUrl(basic.recipeUrl);
+        
+        //
+        const filteredInstructions = this.parseInstructions(schema?.recipeInstructions || [])
+          .map(instruction => {
+            //
+            const filteredImage = instruction.image && !globalUsedImages.has(instruction.image) 
+              ? instruction.image 
+              : undefined;
+              
+            const filteredImages = (instruction.images || [])
+              .filter(img => !globalUsedImages.has(img))
+              .slice(0, 2); //
+
+            //
+            if (filteredImage) globalUsedImages.add(filteredImage);
+            filteredImages.forEach(img => globalUsedImages.add(img));
+
+            return {
+              ...instruction,
+              image: filteredImage,
+              images: filteredImages
+            };
+          });
+
+        const processed: ProcessedJapaneseRecipe = {
+          id: basic.recipeId || ('recipe-' + Date.now()),
+          title: schema?.name || basic.recipeTitle || 'レシピ',
+          description: schema?.description || basic.recipeDescription || '',
+          imageUrl: basic.foodImageUrl || '',
+          sourceUrl: basic.recipeUrl || '',
+          ingredients: this.parseIngredients(schema?.recipeIngredient || basic.recipeMaterial || []),
+          instructions: filteredInstructions,
+          cookingTime: schema?.totalTime || basic.recipeIndication || '30分',
+          servings: schema?.recipeYield || '1人前',
+          difficulty: this.getDifficultyByIngredientCount(this.parseIngredients(schema?.recipeIngredient || basic.recipeMaterial || []).length),
+          cost: basic.recipeCost || '300円',
+          nutrition: schema?.nutrition,
+          source: 'rakuten',
+          createdAt: Date.now()
+        };
+
+        processedRecipes.push(processed);
+
+        
+      } catch (error) {
+
+      }
+    }
+
+    
+    return processedRecipes;
+  }
+
+  //
+  private parseIngredients(ingredients: string[]): { name: string; amount: string }[] {
+    if (!Array.isArray(ingredients)) return [];
+    
+    return ingredients.map(ingredient => {
+      if (!ingredient || typeof ingredient !== 'string') {
+        return { name: '材料', amount: '適量' };
+      }
+      
+      const match = ingredient.match(/^(.+?)\s*[:：]\s*(.+)$/) || 
+                   ingredient.match(/^(.+?)\s+(.+)$/) ||
+                   [null, ingredient, '適量'];
+      
+      return {
+        name: match[1]?.trim() || ingredient || '材料',
+        amount: match[2]?.trim() || '適量'
+      };
+    });
+  }
+
+  //
+  private parseInstructions(instructions: RecipeInstruction[]): { stepNumber: number; text: string; image?: string; video?: string; images?: string[] }[] {
+    if (!Array.isArray(instructions)) return [];
+    
+    return instructions.map((instruction, index) => ({
+      stepNumber: index + 1,
+      text: instruction?.text || "Step " + (index + 1),
+      image: instruction?.image,
+      video: instruction?.video,
+      images: instruction?.images
+    }));
+  }
+
+  //
+  clearCache(): void {
+    this.cache.clear();
+    
+  }
+
+  //
+  async searchRecipes(keyword: string, maxResults: number = 10): Promise<ProcessedJapaneseRecipe[]> {
+    try {
+      const cacheKey = 'search_' + keyword + '_' + maxResults;
+      const cached = this.cache.get(cacheKey);
+      
+      if (cached) {
+        
+        return cached;
+      }
+
+      await this.rateLimiter.waitIfNeeded();
+
+      //
+      const allRecipes: ProcessedJapaneseRecipe[] = [];
+      
+      //
+      
+      const directSearchRecipes = await this.searchRecipesByKeyword(keyword);
+      
+      if (directSearchRecipes.length > 0) {
+        
+        //
+        const processedDirectRecipes = await this.processRecipeList(directSearchRecipes, maxResults);
+        
+        if (processedDirectRecipes.length > 0) {
+          this.cache.set(cacheKey, processedDirectRecipes);
+          
+          processedDirectRecipes.slice(0, 3).forEach((recipe, index) => {
+            
+          });
+          return processedDirectRecipes;
+        }
+      }
+      
+      //
+      
+      const relevantCategories = this.getRelevantCategoriesForKeyword(keyword);
+
+      
+      //
+      const searchCategories = relevantCategories.length > 0 ? relevantCategories : ['10', '11', '14', '15', '16'];
+      
+      
+      
+      for (const categoryId of searchCategories) {
+        try {
+          
+          const categoryRecipes = await this.getProcessedRecipes(categoryId, 30); //
+          allRecipes.push(...categoryRecipes);
+          
+
+          
+          //
+          if (searchCategories.length > 1 && searchCategories.indexOf(categoryId) < searchCategories.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+        } catch (error) {
+          
+        }
+      }
+      
+      
+      
+      //
+      const filteredRecipes = this.filterRecipesByKeyword(allRecipes, keyword);
+      
+      
+      
+      //
+      const results = filteredRecipes.length > 0 
+        ? filteredRecipes.slice(0, maxResults)
+        : allRecipes.slice(0, Math.min(maxResults, allRecipes.length));
+      
+      if (results.length > 0) {
+        this.cache.set(cacheKey, results);
+        const resultType = filteredRecipes.length > 0 ? '郢ｧ・ｭ郢晢ｽｼ郢晢ｽｯ郢晢ｽｼ郢昜ｼ夲ｽｿ・ｽE郢昴・繝ｻ・ｽ繝ｻ・ｽ' : '郢ｧ・ｫ郢昴・繝ｻ・ｽ繝ｻ・ｽ郢晢ｽｪ隶諛・ｽｴ・｢';
+
+        
+        //
+        results.slice(0, 3).forEach((recipe, index) => {
+          
+        });
+        
+        return results;
+      } else {
+        
+        return [];
+      }
+      
+    } catch (error) {
+      
+      return [];
+    }
+  }
+
+
+
+  //
+  private filterRecipesByKeyword(recipes: ProcessedJapaneseRecipe[], keyword: string): ProcessedJapaneseRecipe[] {
+    const keywordVariations = this.generateKeywordVariations(keyword);
+
+    
+    //
+    
+    recipes.slice(0, 3).forEach((recipe, idx) => {
+      
+      const ingredients = Array.isArray(recipe.ingredients) 
+        ? recipe.ingredients.slice(0, 3).map(i => i?.name || '不明').join(', ')
+        : '材料なし';
+      
+
+    });
+    
+    const scoredRecipes = recipes
+      .map(recipe => ({
+        recipe,
+        score: this.calculateDetailedRelevanceScore(recipe, keyword, keywordVariations)
+      }));
+    
+
+    
+    return scoredRecipes
+      .filter(item => {
+        const hasMatch = item.score > 0;
+        if (hasMatch) {
+
+        }
+        return hasMatch;
+      })
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.recipe);
+  }
+
+  //
+  private calculateDetailedRelevanceScore(recipe: ProcessedJapaneseRecipe, keyword: string, variations: string[]): number {
+    let score = 0;
+    const keywordLower = keyword.toLowerCase();
+    let matchDetails: string[] = [];
+    
+    //
+    if (!recipe || !recipe.title) {
+      
+      return 0;
+    }
+    
+    //
+    const titleLower = (recipe.title || '').toLowerCase();
+    variations.forEach(variation => {
+      const varLower = variation.toLowerCase();
+      
+      if (titleLower.includes(varLower)) {
+        if (titleLower === varLower) {
+          score += 1000; //
+          matchDetails.push('タイトル完全一致:' + variation);
+        } else if (titleLower.startsWith(varLower) || titleLower.endsWith(varLower)) {
+          score += 500;
+          matchDetails.push('タイトル開始/終了:' + variation);
+        } else {
+          score += 200;
+          matchDetails.push('タイトル部分:' + variation);
+        }
+      }
+    });
+    
+    //
+    const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+    ingredients.forEach(ingredient => {
+      if (!ingredient || !ingredient.name) return;
+      
+      const ingLower = ingredient.name.toLowerCase();
+      
+      variations.forEach(variation => {
+        const varLower = variation.toLowerCase();
+        
+        if (ingLower.includes(varLower)) {
+          if (ingLower === varLower) {
+            score += 400; //
+            matchDetails.push('材料完全一致:' + ingredient.name);
+          } else {
+            score += 150;
+            matchDetails.push('材料部分:' + ingredient.name);
+          }
+        }
+      });
+    });
+    
+    //
+    const description = (recipe.description || '').toLowerCase();
+    variations.forEach(variation => {
+      const varLower = variation.toLowerCase();
+      if (description.includes(varLower)) {
+        score += 50;
+        matchDetails.push('説明:' + variation);
+      }
+    });
+    
+    //
+    if (score > 0) {
+
+    }
+    
+    return score;
+  }
+
+  //
+  // キーワードに基づいて関連カテゴリーを取得
+  private getRelevantCategoriesForKeyword(keyword: string): string[] {
+    const keywordLower = keyword.toLowerCase();
+    
+    // 野菜類
+    if (/きゅうり|胡瓜|cucumber|なす|茄子|eggplant|トマト|tomato|ピーマン|pepper|キャベツ|cabbage|レタス|lettuce|ほうれん草|spinach|大根|radish/.test(keywordLower)) {
+      console.log('🥒 野菜カテゴリーを選択');
+      return ['15', '30', '42']; // 野菜、サラダ、和え物
+    }
+    
+    // 唐揚げ・揚げ物
+    if (/唐揚げ|からあげ|から揚げ|フライ|天ぷら|てんぷら|揚げ物|コロッケ|とんかつ|カツ/.test(keywordLower)) {
+      console.log('🍗 揚げ物カテゴリーを選択');
+      return ['10', '11', '14', '15']; // お肉、魚、肉おかず、野菜
+    }
+    
+    // 鶏肉・肉類
+    if (/鶏|とり|チキン|chicken|豚|ぶた|pork|牛|beef|肉|meat/.test(keywordLower)) {
+      console.log('🍖 肉類カテゴリーを選択');
+      return ['10', '14', '17']; // お肉、肉のおかず、汁物
+    }
+    
+    // 魚介類
+    if (/魚|さかな|鮭|salmon|まぐろ|tuna|えび|shrimp|いか|squid|たこ|octopus/.test(keywordLower)) {
+      console.log('🐟 魚介類カテゴリーを選択');
+      return ['11', '16', '30']; // 魚のおかず、魚介の炒め物、サラダ
+    }
+    
+    // ご飯・米料理
+    if (/ご飯|ごはん|米|rice|丼|おにぎり|チャーハン|炊き込み/.test(keywordLower)) {
+      console.log('🍚 ご飯カテゴリーを選択');
+      return ['12', '23', '14']; // ご飯もの、ご飯のお供、肉おかず
+    }
+    
+    // 麺類
+    if (/麺|うどん|そば|ラーメン|パスタ|スパゲティ|焼きそば/.test(keywordLower)) {
+      console.log('🍜 麺類カテゴリーを選択');
+      return ['14', '22', '16']; // 麺、パスタ
+    }
+    
+    // サラダ
+    if (/サラダ|salad/.test(keywordLower)) {
+      console.log('🥗 サラダカテゴリーを選択');
+      return ['30', '15', '42']; // サラダ、野菜、和え物
+    }
+    
+    // デザート・お菓子
+    if (/デザート|お菓子|スイーツ|ケーキ|クッキー/.test(keywordLower)) {
+      console.log('🍰 デザートカテゴリーを選択');
+      return ['23', '21', '22']; // お菓子、パン
+    }
+    
+    // デフォルト: 幅広いカテゴリーから検索（どんなワードでも対応）
+    console.log('🔍 全般カテゴリーから検索:', keyword);
+    // 主要な料理カテゴリーを全て含める
+    return ['10', '11', '14', '15', '30', '16']; // お肉、魚、肉おかず、野菜、サラダ、魚介炒め物
+  }
+
+  private generateKeywordVariations(keyword: string): string[] {
+    // 入力されたキーワードは必ず検索対象に含める（どんなワードでも検索可能）
+    const variations: string[] = [keyword];
+    
+    // conversionMapは検索の幅を広げるためのオプション機能
+    // ここに載っていないキーワードでも、そのまま検索されます
+    const conversionMap: { [key: string]: string[] } = {
+      // 肉類のキーワード変換
+      'chicken': ['鶏肉', 'とり肉', 'チキン', '鳥肉'],
+      'pork': ['豚肉', 'ぶた肉', 'ポーク', '豚'],
+      'beef': ['牛肉', 'ビーフ', '牛'],
+      'meat': ['肉', '肉類', 'ミート'],
+      'ground meat': ['ひき肉', '挽肉', 'ミンチ'],
+      'ham': ['ハム', 'はむ'],
+      'bacon': ['ベーコン', 'べーこん'],
+      'sausage': ['ソーセージ', 'そーせーじ', 'ウインナー'],
+      
+      // 野菜のキーワード変換（拡張版）
+      'tomato': ['トマト', 'とまと'],
+      'onion': ['玉ねぎ', 'たまねぎ', 'オニオン', '玉葱'],
+      'potato': ['じゃがいも', 'ジャガイモ', 'ポテト', '馬鈴薯'],
+      'carrot': ['にんじん', '人参', 'ニンジン'],
+      'cabbage': ['キャベツ', 'きゃべつ'],
+      'cucumber': ['きゅうり', 'キュウリ', '胡瓜'],
+      'lettuce': ['レタス', 'れたす'],
+      'spinach': ['ほうれん草', 'ホウレン草', 'ほうれんそう'],
+      'eggplant': ['なす', 'ナス', '茄子'],
+      'pepper': ['ピーマン', 'ぴーまん', 'パプリカ'],
+      'broccoli': ['ブロッコリー', 'ぶろっこりー'],
+      'mushroom': ['きのこ', 'キノコ', 'マッシュルーム'],
+      'corn': ['とうもろこし', 'コーン', 'トウモロコシ'],
+      'green onion': ['ねぎ', 'ネギ', '葱', '長ネギ'],
+      'radish': ['大根', 'だいこん', 'ダイコン'],
+      
+      // 料理名のキーワード変換（拡張版）
+      'curry': ['カレー', 'かれー', 'カリー'],
+      'pasta': ['パスタ', 'ぱすた', 'スパゲッティ', 'スパゲティ'],
+      'salad': ['サラダ', 'さらだ'],
+      'soup': ['スープ', 'すーぷ', '汁物'],
+      'rice': ['ご飯', '米', 'ライス', 'ごはん'],
+      'hamburger': ['ハンバーグ', 'はんばーぐ', 'ハンバーガー'],
+      'steak': ['ステーキ', 'すてーき'],
+      'stew': ['シチュー', 'しちゅー', '煮込み'],
+      'tempura': ['天ぷら', 'てんぷら', '天麩羅'],
+      'gyoza': ['餃子', 'ぎょうざ', 'ギョーザ'],
+      'sushi': ['寿司', 'すし', 'スシ'],
+      'ramen': ['ラーメン', 'らーめん', '拉麺'],
+      'udon': ['うどん', 'ウドン'],
+      'soba': ['そば', 'ソバ', '蕎麦'],
+      'omelette': ['オムレツ', 'おむれつ', 'オムライス'],
+      'sandwich': ['サンドイッチ', 'さんどいっち', 'サンド'],
+      'pizza': ['ピザ', 'ぴざ'],
+      'gratin': ['グラタン', 'ぐらたん'],
+      
+      // 日本の人気料理（追加）
+      '唐揚げ': ['からあげ', 'から揚げ', 'カラアゲ', 'フライドチキン', '竜田揚げ'],
+      'karaage': ['唐揚げ', 'からあげ', 'から揚げ', 'カラアゲ'],
+      '焼き鳥': ['やきとり', 'ヤキトリ', '串焼き'],
+      '生姜焼き': ['しょうが焼き', 'ショウガ焼き', '豚の生姜焼き'],
+      '肉じゃが': ['にくじゃが', 'ニクジャガ'],
+      '親子丼': ['おやこどん', 'オヤコドン'],
+      'とんかつ': ['トンカツ', '豚カツ', 'ポークカツレツ'],
+      'コロッケ': ['ころっけ', 'クリームコロッケ', 'ポテトコロッケ'],
+      '煮物': ['にもの', 'ニモノ', '煮込み'],
+      '炒め物': ['いためもの', 'イタメモノ', '野菜炒め'],
+      'チャーハン': ['ちゃーはん', '炒飯', 'ヤキメシ', '焼き飯'],
+      'オムライス': ['おむらいす', 'オムレツライス'],
+      '焼きそば': ['やきそば', 'ヤキソバ'],
+      'お好み焼き': ['おこのみやき', 'オコノミヤキ'],
+      'たこ焼き': ['タコヤキ', 'たこやき'],
+      
+      // 調理法のキーワード変換
+      'stir-fry': ['炒め', '炒め物', 'いため', '炒める'],
+      'fried': ['揚げ', '揚げ物', 'フライ', '揚げる'],
+      'grilled': ['焼き', 'グリル', '焼き物', '焼く'],
+      'boiled': ['煮', '煮物', '煮込み', '煮る'],
+      'steamed': ['蒸し', '蒸し物', '蒸す'],
+      'baked': ['焼き', 'ベイク', 'オーブン'],
+      'simmered': ['煮込み', '煮物', '煮込む'],
+      'pickled': ['漬物', '漬け', '漬ける'],
+      
+      // 魚介類のキーワード変換
+      'fish': ['魚', 'さかな', 'サカナ'],
+      'salmon': ['鮭', 'サーモン', 'さけ'],
+      'tuna': ['まぐろ', 'マグロ', 'ツナ', '鮪'],
+      'shrimp': ['えび', 'エビ', '海老', 'シュリンプ'],
+      'squid': ['いか', 'イカ', '烏賊'],
+      'octopus': ['たこ', 'タコ', '蛸'],
+      
+      // その他のキーワード変換
+      'dessert': ['デザート', 'スイーツ', 'お菓子', 'おやつ'],
+      'breakfast': ['朝食', '朝ごはん', 'あさごはん'],
+      'lunch': ['昼食', 'ランチ', '昼ごはん', 'ひるごはん'],
+      'dinner': ['夕食', 'ディナー', '夜ごはん', 'ばんごはん'],
+      'healthy': ['ヘルシー', '健康', 'ダイエット', 'ローカロリー'],
+      'quick': ['簡単', '時短', 'クイック', '手軽'],
+      'spicy': ['辛い', 'スパイシー', 'ピリ辛'],
+      'sweet': ['甘い', 'スイート', 'あまい'],
+      'sour': ['酸っぱい', 'すっぱい', 'サワー'],
+    };
+    
+    // キーワード変換マップに基づいてバリエーションを追加
+    if (conversionMap[keyword]) {
+      variations.push(...conversionMap[keyword]);
+    }
+    
+    // 逆引き:日本語キーワードから英語キーワードのバリエーションを追加
+    for (const [englishKey, japaneseVariations] of Object.entries(conversionMap)) {
+      if (japaneseVariations.includes(keyword)) {
+        variations.push(englishKey);
+        variations.push(...japaneseVariations);
+      }
+    }
+    
+    return [...new Set(variations)]; // 重複を除去
+  }
+
+  //
+  private calculateRelevanceScore(recipe: ProcessedJapaneseRecipe, keyword: string, variations: string[]): number {
+    let score = 0;
+    const keywordLower = keyword.toLowerCase();
+    
+    // 安全にデータを取得
+    const title = (recipe.title || '').toLowerCase();
+    const description = (recipe.description || '').toLowerCase();
+    const ingredients = recipe.ingredients || [];
+    
+    // タイトルの完全一致
+    if (title === keywordLower) {
+      score += 1000;
+    }
+    
+    // タイトルの前方一致
+    if (title.startsWith(keywordLower)) {
+      score += 500;
+    }
+    
+    // タイトルの部分一致
+    if (title.includes(keywordLower)) {
+      score += 200;
+    }
+    
+    // バリエーションとのマッチング
+    variations.forEach(variation => {
+      const varLower = variation.toLowerCase();
+      if (title === varLower) {
+        score += 800;
+      } else if (title.startsWith(varLower)) {
+        score += 300;
+      } else if (title.includes(varLower)) {
+        score += 100;
+      }
+    });
+    
+    // 材料とのマッチング
+    ingredients.forEach(ingredient => {
+      // ingredientが文字列の場合とオブジェクトの場合を処理
+      let ingName: string;
+      if (typeof ingredient === 'string') {
+        ingName = ingredient;
+      } else if (ingredient && typeof ingredient === 'object' && 'name' in ingredient) {
+        ingName = ingredient.name || '';
+      } else {
+        ingName = '';
+      }
+      
+      const ingLower = ingName.toLowerCase();
+      
+      if (ingLower === keywordLower) {
+        score += 400;
+      } else if (ingLower.includes(keywordLower)) {
+        score += 150;
+      }
+      
+      variations.forEach(variation => {
+        const varLower = variation.toLowerCase();
+        if (ingLower === varLower) {
+          score += 300;
+        } else if (ingLower.includes(varLower)) {
+          score += 80;
+        }
+      });
+    });
+    
+    // 説明文とのマッチング
+    if (description.includes(keywordLower)) {
+      score += 50;
+    }
+    
+    variations.forEach(variation => {
+      if (description.includes(variation.toLowerCase())) {
+        score += 30;
+      }
+    });
+    
+    return score;
+  }
+
+  //
+  private findSimilarRecipes(recipes: ProcessedJapaneseRecipe[], keyword: string, count: number): ProcessedJapaneseRecipe[] {
+    const keywordLower = keyword.toLowerCase();
+    const variations = this.generateKeywordVariations(keyword);
+    
+    //
+    const scoredRecipes = recipes.map(recipe => ({
+      recipe,
+      score: this.calculateRelevanceScore(recipe, keyword, variations)
+    }));
+    
+    //
+    return scoredRecipes
+      .sort((a, b) => b.score - a.score)
+      .slice(0, count)
+      .map(item => item.recipe);
+  }
+
+  // Estimate difficulty from ingredient count
+  private getDifficultyByIngredientCount(ingredientCount: number): string {
+    if (ingredientCount <= 3) return 'Easy';
+    if (ingredientCount <= 7) return 'Normal';
+    return 'Hard';
+  }
+}
+
+//
+export const rakutenRecipeApi = new RakutenRecipeApiService();
+
+/**
+ * 﨟槫翁 郢昴・繝ｻ・ｽ繝ｻ・ｽ郢昴・繝ｻ・ｽ繝ｻ・ｽ騾包ｽｨ: 郢ｧ・ｫ郢昴・繝ｻ・ｽ繝ｻ・ｽ郢晢ｽｪ隰暦ｽ｢驍擾ｽ｢郢ｧ雋橸ｽｮ貅ｯ・｡繝ｻ
+ * 闖ｴ・ｿ邵ｺ繝ｻ繝ｻ・ｽ繝ｻ・ｽ: HomeScreen驕ｲ蟲ｨ縲・import { debugExploreCategories } from '../services/rakutenRecipeApi';
+ *        await debugExploreCategories('邵ｺ髦ｪ・・ｸｺ繝ｻ繝ｻ・ｽ繝ｻ・ｽ');
+ */
+export async function debugExploreCategories(keyword: string = '邵ｺ髦ｪ・・ｸｺ繝ｻ繝ｻ・ｽ繝ｻ・ｽ'): Promise<void> {
+  await rakutenRecipeApi.debugCategoryExploration(keyword);
+}
+
+

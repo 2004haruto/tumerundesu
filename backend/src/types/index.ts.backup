@@ -1,0 +1,168 @@
+// src/types/index.ts
+
+import { Request } from 'express';
+import { JwtPayload } from 'jsonwebtoken';
+
+// データベースエンティティ型
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  password: string;
+  bento_box_size?: string;
+  allergies?: string;
+  preferences?: string;
+  goal_calories?: number;
+  weight?: number;
+  activity_level?: 'low' | 'mid' | 'high';
+  region?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Menu {
+  id: number;
+  title: string;
+  description?: string;
+  calories?: number;
+  image_url?: string;
+  created_by_ai: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface MenuItem {
+  id: number;
+  menu_id: number;
+  name: string;
+  category: 'main' | 'side' | 'staple' | 'other';
+  ingredients?: string;
+  nutrition_json?: any;
+  notes?: string;
+  created_at: Date;
+}
+
+export interface Favorite {
+  id: number;
+  user_id: number;
+  menu_id: number;
+  created_at: Date;
+}
+
+export interface ShoppingList {
+  id: number;
+  user_id: number;
+  name: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ShoppingListItem {
+  id: number;
+  shopping_list_id: number;
+  ingredient_id: number;
+  quantity: number;
+  is_purchased: boolean;
+  notes?: string;
+  added_at: Date;
+}
+
+export interface MenuReview {
+  id: number;
+  user_id: number;
+  menu_id: number;
+  rating: 'satisfied' | 'dissatisfied' | 'normal';
+  comment?: string;
+  created_at: Date;
+}
+
+export interface NutritionLog {
+  id: number;
+  user_id: number;
+  menu_id: number;
+  consumed_date: Date;
+  calories_consumed: number;
+  notes?: string;
+  created_at: Date;
+}
+
+// API リクエスト/レスポンス型
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  username: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  token: string;
+  user: {
+    id: number;
+    email: string;
+    username: string;
+  };
+}
+
+export interface MenuWithDetails extends Menu {
+  created_by_name?: string;
+  ingredients?: (Ingredient & MenuIngredient)[];
+  steps?: CookingStep[];
+  favorite_count?: number;
+}
+
+// JWT型
+export interface JWTPayload extends JwtPayload {
+  userId: number;
+  email: string;
+}
+
+// Express Request拡張
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: number;
+    email: string;
+    username: string;
+  };
+}
+
+// API エラーレスポンス
+export interface ApiError {
+  error: string;
+  message?: string;
+  details?: string[];
+}
+
+// ページネーション
+export interface PaginationQuery {
+  page?: string;
+  limit?: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// バリデーションスキーマ型
+export interface ValidationSchema {
+  [key: string]: any;
+}
+
+// データベースクエリ結果型
+export interface QueryResult {
+  insertId?: number;
+  affectedRows?: number;
+  changedRows?: number;
+}
+
+export type DatabaseRow = Record<string, any>;
