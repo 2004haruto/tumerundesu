@@ -1,0 +1,95 @@
+experiment:
+  name: '#008 - ゼミ実験8回目'
+  date: '2025-12-08T13:06:26.395586'
+  researcher: AI Seminar Team
+  purpose: 弁当箱検出AIの精度・速度比較実験
+model:
+  name: YOLOv3 + OpenCV
+  framework: OpenCV DNN + YOLO
+  version: '3.0'
+  input_size:
+  - 416
+  - 416
+  detection_modes:
+  - opencv
+  - yolo
+  - hybrid
+hyperparameters:
+  confidence_threshold: 0.5
+  nms_threshold: 0.4
+  learning_rate: null
+  batch_size: 1
+dataset:
+  name: Bento Box Dataset
+  total_images: 0
+  train_split: 0.0
+  val_split: 0.0
+  test_split: 1.0
+  classes:
+  - bento_box
+  annotation_format: bbox
+shooting_conditions:
+  camera: Standard RGB Camera
+  resolution: 640x480
+  lighting: Indoor Fluorescent
+  distance_cm: 30
+  angle_degrees: 45
+  background: Table Surface
+evaluation_metrics:
+  primary: average_error_mm
+  secondary:
+  - inference_time_ms
+  - success_rate
+  - confidence
+  comparison_modes:
+  - opencv
+  - yolo
+  - hybrid
+environment:
+  os: Windows/Linux
+  python_version: 3.9+
+  opencv_version: 4.8+
+  gpu: Optional (CPU mode available)
+output:
+  logs_dir: ./outputs/logs
+  visualizations_dir: ./outputs/visualizations
+  metrics_csv: ./outputs/metrics.csv
+  summary_json: ./outputs/evaluation_summary.json
+remarks: 研究用3モード比較実験（CLI）
+results:
+  evaluation_date: '2025-12-08T13:06:38.711857'
+  total_images_evaluated: 8
+  modes:
+    opencv:
+      mode: opencv
+      total_images: 8
+      success_count: 8
+      success_rate: 1.0
+      avg_inference_time_ms: 2.652764320373535
+      avg_error_mm: 137.15455159172464
+      std_error_mm: 62.92382184560481
+      min_error_mm: 41.31448771822018
+      max_error_mm: 201.7557420895713
+      avg_confidence: 0.7
+    yolo:
+      mode: yolo
+      total_images: 8
+      success_count: 8
+      success_rate: 1.0
+      avg_inference_time_ms: 335.65106987953186
+      avg_error_mm: 70.8957904894134
+      std_error_mm: 41.2711032859118
+      min_error_mm: 24.702186827054145
+      max_error_mm: 135.36017792989267
+      avg_confidence: 0.6826746091246605
+    hybrid:
+      mode: hybrid
+      total_images: 8
+      success_count: 8
+      success_rate: 1.0
+      avg_inference_time_ms: 605.647623538971
+      avg_error_mm: 137.93413505399056
+      std_error_mm: 63.81725824444649
+      min_error_mm: 41.31448771822018
+      max_error_mm: 205.46092842328179
+      avg_confidence: 0.6826746091246605

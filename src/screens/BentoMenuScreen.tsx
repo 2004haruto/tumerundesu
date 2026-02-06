@@ -1,19 +1,23 @@
+import { useAuth } from '../contexts/AuthContext';
+import { NutritionService } from '../services/nutritionService';
+// APIベースURL（.envのEXPO_PUBLIC_API_URLを参照）
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 // BentoMenuScreen.tsx - Original Design with Enhanced API
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { RootStackParamList } from '../../App';
 import { BentoGenerator, GeneratedBento } from '../services/bentoGenerator';
@@ -49,7 +53,7 @@ type Recommend = {
   bentoId?: string; // お弁当の場合に使用
 };
 
-type Favorite = {
+export type Favorite = {
   id: string;
   title: string;
   sub?: string;
@@ -57,6 +61,8 @@ type Favorite = {
   icon?: string;
   recipe?: ProcessedJapaneseRecipe;
   bentoId?: string;
+  image_url?: string; // DBレスポンスに合わせて追加
+  description?: string;
 };
 
 // お弁当スタイルに応じたタグを生成
@@ -151,15 +157,63 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
     { id: `default-r2-${Date.now()}`, tag: "オメガ3豊富", title: "焼き魚", sub: "魚弁当", kcal: 450 },
     { id: `default-r3-${Date.now()}`, tag: "タンパク質", title: "鶏むねの塩焼き", sub: "鶏肉弁当", kcal: 500 },
   ]);
-  const [favorites, setFavorites] = useState<Favorite[]>([
-    { id: `default-f1-${Date.now()}`, title: "肉と野菜弁当", sub: "栄養バランスが理想的", kcal: 400, icon: "food-steak" },
-    { id: `default-f2-${Date.now()}`, title: "ベジタリアン弁当", sub: "野菜多め", kcal: 350, icon: "leaf" },
-    { id: `default-f3-${Date.now()}`, title: "カレー弁当", sub: "スパイシーで美味しい", kcal: 600, icon: "food-variant" },
-  ]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
 
   useEffect(() => {
     loadEnhancedRecipes();
+    fetchFavorites();
   }, []);
+
+  // お気に入りをDB→menu_idリスト→API経由で楽天レシピ詳細取得
+  const { user } = useAuth();
+  const fetchFavorites = async () => {
+    if (!user?.id) return;
+    try {
+      const userId = user.id;
+      const baseUrl = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
+      // /favoritesエンドポイントで詳細情報ごと取得
+      const favRes = await fetch(`${baseUrl}/favorites/${userId}`);
+      if (!favRes.ok) {
+        setFavorites([]);
+        return;
+      }
+      const favData = await favRes.json();
+      if (!Array.isArray(favData) || favData.length === 0) {
+        setFavorites([]);
+        return;
+      }
+      // 取得したデータをそのままセット（title, calories, image_url, description等を含む）
+      const favoriteItems = favData.map((item, idx) => {
+        // ingredients, stepsを配列化
+        let ingredients = item.ingredients;
+        let steps = item.steps;
+        if (typeof ingredients === 'string') {
+          try { ingredients = JSON.parse(ingredients); } catch { ingredients = []; }
+        }
+        if (typeof steps === 'string') {
+          try { steps = JSON.parse(steps); } catch { steps = []; }
+        }
+        return {
+          id: String(item.menu_id),
+          title: item.title || 'レシピ名不明',
+          sub: item.calories ? `${item.calories}kcal/人前` : '',
+          kcal: item.calories || 0,
+          icon: ["food-steak", "leaf", "food-variant"][idx % 3] || "silverware-fork-knife",
+          recipe: {
+            ...item,
+            ingredients,
+            instructions: steps // stepsをinstructionsとして渡す
+          },
+          bentoId: undefined,
+          image_url: item.image_url,
+          description: item.description
+        };
+      });
+      setFavorites(favoriteItems);
+    } catch (e) {
+      setFavorites([]);
+    }
+  };
 
   const loadEnhancedRecipes = async () => {
     setLoading(true);
@@ -256,9 +310,8 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
         });
         
         const updatedFavorites = favoriteItems;
-        
         setRecommends(updatedRecommends);
-        setFavorites(updatedFavorites);
+        // setFavorites(updatedFavorites); // ← ここでお気に入りを上書きしない
       }
     } catch (error) {
       console.error('Error loading enhanced recipes:', error);
@@ -281,7 +334,25 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
       const estimatedProtein = Math.round(estimatedCalories * 0.15 / 4); // タンパク質15%想定
       const estimatedCarbs = Math.round(estimatedCalories * 0.50 / 4); // 炭水化物50%想定
       const estimatedFat = Math.round(estimatedCalories * 0.35 / 9); // 脂質35%想定
-      
+
+      // 材料・作り方を必ず配列で渡す
+      let ingredients = recipe.ingredients;
+      if (typeof ingredients === 'string') {
+        try { ingredients = JSON.parse(ingredients); } catch { ingredients = []; }
+      }
+      if (!Array.isArray(ingredients)) ingredients = [];
+      let instructions = recipe.instructions;
+      // stepsプロパティが存在する場合はそちらも考慮
+      // @ts-ignore
+      if ((!instructions || instructions.length === 0) && recipe.steps) {
+        // @ts-ignore
+        instructions = recipe.steps;
+      }
+      if (typeof instructions === 'string') {
+        try { instructions = JSON.parse(instructions); } catch { instructions = []; }
+      }
+      if (!Array.isArray(instructions)) instructions = [];
+
       // Show detailed nutrition info
       Alert.alert(
         `🍱 ${recipe.title}`,
@@ -292,11 +363,11 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
         `🥑 脂質: 約${estimatedFat}g\n\n` +
         `⏱️ 調理時間: ${recipe.cookingTime || '不明'}\n` +
         `💰 費用: ${recipe.cost || '不明'}\n` +
-        `📝 材料数: ${recipe.ingredients.length}種類\n` +
+        `📝 材料数: ${ingredients.length}種類\n` +
         `🌍 楽天レシピより\n` +
         `✨ 弁当にぴったりの一品です！`,
         [
-          { text: 'レシピ詳細', onPress: () => navigation.navigate('MenuDetail', { recipe }) },
+          { text: 'レシピ詳細', onPress: () => navigation.navigate('MenuDetail', { recipe: { ...recipe, ingredients, instructions } }) },
           { text: 'OK' }
         ]
       );
@@ -319,11 +390,105 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
         const portion = item.role === 'rice' ? '' : ` (${Math.round(item.portion * 100)}%)`;
         return `${emoji} ${item.recipe.title}${portion} - ${Math.round(item.adjustedNutrition.calories)}kcal`;
       }).join('\n');
-      
+
       const proteinPercent = Math.round((bento.totalNutrition.protein * 4 / bento.totalNutrition.calories) * 100);
       const carbsPercent = Math.round((bento.totalNutrition.carbs * 4 / bento.totalNutrition.calories) * 100);
       const fatPercent = Math.round((bento.totalNutrition.fat * 9 / bento.totalNutrition.calories) * 100);
-      
+
+      // お弁当の栄養データをDBに保存
+      const saveBentoNutrition = async () => {
+        try {
+          const success = await NutritionService.logBentoNutrition({
+            bentoId: bento.id,
+            bentoName: bento.name,
+            calories: Math.round(bento.totalNutrition.calories),
+            protein: Math.round(bento.totalNutrition.protein * 10) / 10,
+            carbs: Math.round(bento.totalNutrition.carbs * 10) / 10,
+            fat: Math.round(bento.totalNutrition.fat * 10) / 10,
+            items: bento.items.map(item => ({
+              role: item.role,
+              title: item.recipe.title,
+              portion: item.portion,
+              calories: item.adjustedNutrition.calories,
+              protein: item.adjustedNutrition.protein,
+              carbs: item.adjustedNutrition.carbs,
+              fat: item.adjustedNutrition.fat
+            })),
+            mealType: 'lunch',
+            notes: `${bento.items.length}品目で構成されたバランス弁当`
+          });
+
+          if (success) {
+            Alert.alert(
+              '✅ 記録完了', 
+              'お弁当の栄養データを記録しました！\n栄養ダッシュボードで確認できます。'
+            );
+          } else {
+            Alert.alert('⚠️ 記録失敗', '栄養データの記録に失敗しました');
+          }
+        } catch (error) {
+          console.error('栄養データ保存エラー:', error);
+          Alert.alert('❌ エラー', '栄養データの保存中にエラーが発生しました');
+        }
+      };
+
+      // お気に入り追加処理
+      const addToFavorites = () => {
+        // すでに同じbentoIdがあれば追加しない
+        if (favorites.some(f => f.bentoId === bento.id)) {
+          Alert.alert('既にお気に入りに追加されています');
+          return;
+        }
+        // 材料・手順を集約
+  const ingredients = bento.items.flatMap(item => item.recipe?.ingredients || []);
+  const steps = bento.items.flatMap(item => item.recipe?.instructions || []);
+        // APIへPOST
+        const postData = {
+          user_id: user.id,
+          menu_id: bento.id,
+          title: bento.name,
+          image_url: '',
+          calories: Math.round(bento.totalNutrition.calories),
+          description: bento.description || '',
+          ingredients,
+          steps
+        };
+        const baseUrl = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
+        fetch(`${baseUrl}/favorites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(postData)
+        })
+          .then(res => {
+            if (res.ok) {
+              Alert.alert('お気に入りに追加しました！');
+              setFavorites(prev => [
+                {
+                  id: `favorite-bento-${Date.now()}-${bento.id}`,
+                  title: bento.name,
+                  sub: getBentoSubtitle(bento),
+                  kcal: Math.round(bento.totalNutrition.calories),
+                  icon: 'food-steak',
+                  recipe: undefined,
+                  bentoId: bento.id
+                },
+                ...prev
+              ]);
+            } else if (res.status === 409) {
+              Alert.alert('すでにお気に入りに登録されています');
+            } else {
+              res.json().then(err => {
+                Alert.alert('お気に入り追加に失敗', err.error || err.message || '不明なエラー');
+              }).catch(() => {
+                Alert.alert('お気に入り追加に失敗', '不明なエラー');
+              });
+            }
+          })
+          .catch(() => {
+            Alert.alert('通信エラー', 'お気に入り追加に失敗しました');
+          });
+      };
+
       Alert.alert(
         `🍱 ${bento.name}`,
         `${bento.description}\n\n` +
@@ -335,7 +500,8 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
         `📝 お弁当の構成:\n${itemsList}\n\n` +
         `✨ ${bento.items.length}品目で構成されたバランス弁当です！`,
         [
-          { text: 'お気に入りに追加', onPress: () => console.log('お気に入り追加') },
+          { text: '栄養記録', onPress: saveBentoNutrition },
+          { text: 'お気に入りに追加', onPress: addToFavorites },
           { text: 'レシピ詳細', onPress: () => navigation.navigate('MenuDetail', { bento }) },
           { text: 'OK' }
         ]
@@ -346,22 +512,38 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
   // 検索機能
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
-    
     if (query.trim().length < 2) {
       setSearchResults([]);
       setIsSearching(false);
       return;
     }
-    
     setIsSearching(true);
     try {
       console.log(`🔍 "${query}" でレシピを検索中...`);
-      
       // 楽天レシピAPIでキーワード検索
       const results = await rakutenRecipeApi.searchRecipes(query, 10);
-      
-      setSearchResults(results);
-      console.log(`🍽️ ${results.length}件のレシピが見つかりました`);
+      // デバッグ: APIの生レスポンス全体を出力
+      console.log('🔵 API生レスポンス:', results);
+      // 材料名にもキーワードが含まれるかでフィルタ
+      const normalizedWords = [query.trim()];
+      // ひらがな・カタカナ・ローマ字変換も追加
+      if (/^[ぁ-ん]+$/.test(query)) normalizedWords.push(query.replace(/[ぁ-ん]/g, s => String.fromCharCode(s.charCodeAt(0) + 0x60))); // ひらがな→カタカナ
+      if (/^[ァ-ン]+$/.test(query)) normalizedWords.push(query.replace(/[ァ-ン]/g, s => String.fromCharCode(s.charCodeAt(0) - 0x60))); // カタカナ→ひらがな
+      if (/^[ぁ-んァ-ン]+$/.test(query)) normalizedWords.push(query.normalize('NFKC'));
+      normalizedWords.push(query.toLowerCase());
+      // 材料名・タイトル・説明文いずれかに含まれるものだけ
+      const filteredResults = results.filter(recipe => {
+        // 材料名
+        const ingredientHit = Array.isArray(recipe.ingredients) && recipe.ingredients.some(ing =>
+          typeof ing.name === 'string' && normalizedWords.some(word => ing.name.includes(word))
+        );
+        // タイトル・説明文
+        const titleHit = typeof recipe.title === 'string' && normalizedWords.some(word => recipe.title.includes(word));
+        const descHit = typeof recipe.description === 'string' && normalizedWords.some(word => recipe.description.includes(word));
+        return ingredientHit || titleHit || descHit;
+      });
+      setSearchResults(filteredResults);
+      console.log(`🍽️ ${filteredResults.length}件のレシピが見つかりました`);
     } catch (error) {
       console.error('検索エラー:', error);
       Alert.alert('検索エラー', 'レシピの検索中にエラーが発生しました。');
@@ -530,32 +712,54 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.headerButtons}>
             <TouchableOpacity 
               style={styles.listBtn} 
-              onPress={() => navigation.navigate('Favorites')}
+              onPress={() => navigation.navigate('Favorites', { favorites })}
               activeOpacity={0.7}
             >
               <MaterialCommunityIcons name="format-list-bulleted" size={16} color={PALETTE.teal} />
               <Text style={styles.listBtnText}>一覧</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.historyBtn} 
-              onPress={() => navigation.navigate('ProposalHistory')}
-              activeOpacity={0.7}
-            >
-              <MaterialCommunityIcons name="history" size={16} color={PALETTE.blue} />
-              <Text style={styles.historyBtnText}>提案履歴</Text>
-            </TouchableOpacity>
           </View>
         </View>
         <Card style={styles.listCard}>
-          {favorites.map((f, i) => (
+          {favorites.slice(0, 3).map((f, i) => (
             <View key={`favorite-${i}-${f.id}`}>
               <TouchableOpacity 
                 activeOpacity={0.7} 
                 style={styles.listItem} 
-                onPress={() => f.recipe ? handleRecipePress(f.recipe) : handleBentoPress(f.bentoId || f.id)}
+                onPress={() => {
+                  // お気に入りレシピ詳細をMenuDetailScreenに渡して遷移
+                  let ingredients = f.recipe?.ingredients;
+                  if (typeof ingredients === 'string') {
+                    try { ingredients = JSON.parse(ingredients); } catch { ingredients = []; }
+                  }
+                  if (!Array.isArray(ingredients)) ingredients = [];
+                  let instructions = f.recipe?.instructions;
+                  // stepsプロパティが存在する場合はそちらも考慮
+                  // @ts-ignore
+                  if ((!instructions || instructions.length === 0) && f.recipe?.steps) {
+                    // @ts-ignore
+                    instructions = f.recipe.steps;
+                  }
+                  if (typeof instructions === 'string') {
+                    try { instructions = JSON.parse(instructions); } catch { instructions = []; }
+                  }
+                  if (!Array.isArray(instructions)) instructions = [];
+                  navigation.navigate('MenuDetail', {
+                    recipe: {
+                      id: f.id,
+                      title: f.title,
+                      imageUrl: f.image_url,
+                      calories: f.kcal,
+                      description: f.description,
+                      ingredients,
+                      instructions,
+                      // 必要に応じて他のフィールドも追加
+                    }
+                  });
+                }}
               >
                 <View style={styles.listLeft}>
-                  <View style={[styles.thumb, { backgroundColor: `${[PALETTE.teal, PALETTE.grape, PALETTE.yellow][i % 3]}22` }]}>
+                  <View style={[styles.thumb, { backgroundColor: `${[PALETTE.teal, PALETTE.grape, PALETTE.yellow][i % 3]}22` }]}> 
                     <MaterialCommunityIcons
                       name={(f.icon as any) ?? "silverware-fork-knife"}
                       size={18}
@@ -573,32 +777,16 @@ const BentoMenuScreen: React.FC<Props> = ({ navigation }) => {
                   <Text style={styles.listKcal}>
                     {f.kcal} <Text style={styles.listKcalUnit}>kcal</Text>
                   </Text>
+                  {/* アイコン表示はそのまま */}
                   {f.recipe && <Text style={styles.apiIndicator}>🌟</Text>}
                   {f.bentoId && <Text style={styles.bentoIndicator}>🍱</Text>}
                 </View>
               </TouchableOpacity>
-              {i !== favorites.length - 1 && <View style={styles.divider} />}
+              {i !== Math.min(favorites.length, 3) - 1 && <View style={styles.divider} />}
             </View>
           ))}
         </Card>
 
-        {/* 写真プレースホルダー（カルーセル風） */}
-        <SectionTitle title="今日のお弁当" accent={PALETTE.grape} />
-        <Card style={styles.photoCard}>
-          <View style={styles.photoBox}>
-            <MaterialCommunityIcons name="camera-outline" size={48} color={PALETTE.subtle} />
-            <Text style={styles.photoText}>栄養バランスを考えたお弁当</Text>
-            <Text style={styles.photoSubText}>TheMealDB × USDA 栄養データベース連携</Text>
-          </View>
-          <View style={styles.dotsRow}>
-            {[0, 1, 2].map((i) => (
-              <View
-                key={i}
-                style={[styles.dot, carouselIndex === i && styles.dotActive]}
-              />
-            ))}
-          </View>
-        </Card>
       </ScrollView>
 
       {/* Bottom Nav */}

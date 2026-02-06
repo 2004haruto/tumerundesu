@@ -212,11 +212,15 @@ export class RakutenRecipeApiService {
       const keywordVariations = this.generateKeywordVariations(keyword);
       console.log('🔄 キーワードバリエーション:', keywordVariations);
       
-      // レート制限を避けるため、適度な数のカテゴリーから検索
-      // 最も関連性の高いカテゴリーを使用
-      const relevantCategories = this.getRelevantCategoriesForKeyword(keyword);
-      const categories = categoryId ? [categoryId] : relevantCategories.slice(0, 4); // 最大4カテゴリーに制限
-      console.log('📂 検索カテゴリー:', categories, 'から検索');
+  // レート制限を避けつつ、より多くのカテゴリから検索
+  // 最も関連性の高いカテゴリーを最大10件まで使用
+  const relevantCategories = this.getRelevantCategoriesForKeyword(keyword);
+  const categories = categoryId
+    ? [categoryId]
+    : (relevantCategories.length > 0
+    ? relevantCategories.slice(0, 10)
+    : ['10', '11', '12', '13', '14', '15', '16', '17', '18', '30']); // デフォルト10カテゴリ
+  console.log('📂 検索カテゴリー:', categories, 'から検索（最大10カテゴリ）');
       
       const allRecipes: RakutenRecipeBasic[] = [];
 

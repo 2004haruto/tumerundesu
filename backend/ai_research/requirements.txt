@@ -1,0 +1,28 @@
+# AI研究機能 - 依存パッケージ
+
+# コアライブラリ
+numpy>=1.24.0
+opencv-python>=4.8.0
+PyYAML>=6.0
+
+# 深層学習（YOLO用）
+# YOLOv8 (Ultralytics) - 最高精度
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Web API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# データ可視化
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# データ処理
+pandas>=2.1.0
+
+# ユーティリティ
+python-dotenv>=1.0.0
+Pillow>=10.1.0

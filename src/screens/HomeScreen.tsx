@@ -1,21 +1,36 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useState } from "react";
+import * as Location from 'expo-location';
+import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  CalendarEvent,
+  formatEventTime,
+  getEventIcon,
+  getTodayEvents
+} from '../services/calendarService';
 import { debugExploreCategories } from '../services/rakutenRecipeApi';
+import {
+  getClothingSuggestion,
+  getCurrentWeather,
+  getItemSuggestion,
+  getWeatherEmoji,
+  WeatherData
+} from '../services/weatherApi';
 
 const { width } = Dimensions.get("window");
 
@@ -56,6 +71,71 @@ const chips = ["リュック", "フルーツ", "傘"];
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const { user, logout } = useAuth();
   const [isExploring, setIsExploring] = useState(false);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [isLoadingWeather, setIsLoadingWeather] = useState(true);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(true);
+
+  // 天気情報を取得
+  useEffect(() => {
+    const fetchWeather = async () => {
+      try {
+        setIsLoadingWeather(true);
+        setWeatherError(null);
+
+        console.log('📍 位置情報の許可をリクエスト中...');
+        // 位置情報の許可をリクエスト
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        console.log('位置情報の許可ステータス:', status);
+        
+        if (status !== 'granted') {
+          setWeatherError('位置情報の許可が必要です');
+          setIsLoadingWeather(false);
+          return;
+        }
+
+        console.log('📍 現在地を取得中...');
+        // 現在地を取得
+        const location = await Location.getCurrentPositionAsync({});
+        const { latitude, longitude } = location.coords;
+        console.log('現在地:', latitude, longitude);
+
+        console.log('🌤️ 天気情報を取得中...');
+        // 天気情報を取得
+        const weatherData = await getCurrentWeather(latitude, longitude);
+        console.log('天気データ取得成功:', weatherData);
+        setWeather(weatherData);
+      } catch (error) {
+        console.error('❌ 天気情報の取得に失敗:', error);
+        setWeatherError('天気情報を取得できませんでした');
+      } finally {
+        setIsLoadingWeather(false);
+        console.log('天気情報の取得処理完了');
+      }
+    };
+
+    fetchWeather();
+  }, []);
+
+  // カレンダーイベントを取得
+  useEffect(() => {
+    const fetchCalendarEvents = async () => {
+      try {
+        setIsLoadingCalendar(true);
+        console.log('📅 カレンダーイベントを取得中...');
+        const events = await getTodayEvents();
+        console.log(`カレンダーイベント取得: ${events.length}件`);
+        setCalendarEvents(events);
+      } catch (error) {
+        console.error('❌ カレンダーイベントの取得に失敗:', error);
+      } finally {
+        setIsLoadingCalendar(false);
+      }
+    };
+
+    fetchCalendarEvents();
+  }, []);
 
   const handleLogout = () => {
     Alert.alert(
@@ -150,63 +230,101 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         {/* Weather + Suggestions */}
-        <SectionTitle title="今日の天気" subtitle="気温: 30℃" accent={PALETTE.coral} />
-        <View style={styles.cardRow}>
-          <Card style={{ flex: 1 }} accent={PALETTE.yellow}>
-            <Text style={styles.cardLabel}>服装</Text>
-            <View style={styles.cardImageBox}>
-              <Image
-                source={{
-                  uri: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=800&auto=format&fit=crop",
-                }}
-                style={styles.cardImage}
-              />
+        {isLoadingWeather ? (
+          <>
+            <SectionTitle title="今日の天気" subtitle="読み込み中..." accent={PALETTE.coral} />
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={PALETTE.coral} />
             </View>
-            <Text style={styles.caption}>サンダル</Text>
-            <Text numberOfLines={2} style={styles.small}>
-              夏の天気なので軽めの服装がおすすめ
-            </Text>
-          </Card>
-
-          <View style={{ width: 12 }} />
-
-          <Card style={{ flex: 1 }} accent={PALETTE.teal}>
-            <Text style={styles.cardLabel}>持ち物</Text>
-            <View style={styles.cardImageBox}>
-              <Image
-                source={{
-                  uri: "https://images.unsplash.com/photo-1621293954906-c4a19a2eb2b3?q=80&w=800&auto=format&fit=crop",
-                }}
-                style={styles.cardImage}
-              />
+          </>
+        ) : weatherError ? (
+          <>
+            <SectionTitle title="今日の天気" subtitle={weatherError} accent={PALETTE.coral} />
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>天気情報を取得できませんでした</Text>
+              <Text style={styles.errorSubtext}>位置情報の設定を確認してください</Text>
             </View>
-            <Text style={styles.caption}>保冷剤</Text>
-            <Text numberOfLines={2} style={styles.small}>
-              真夏には保冷剤を。飲み物は冷たいものを。
-            </Text>
-          </Card>
-        </View>
+          </>
+        ) : weather ? (
+          <>
+            <SectionTitle 
+              title={`今日の天気 ${getWeatherEmoji(weather.icon)}`} 
+              subtitle={`${weather.city} | 気温: ${weather.temp}℃ | ${weather.description}`} 
+              accent={PALETTE.coral} 
+            />
+            <View style={styles.cardRow}>
+              <Card style={{ flex: 1 }} accent={PALETTE.yellow}>
+                <Text style={styles.cardLabel}>服装</Text>
+                <View style={styles.cardImageBox}>
+                  <Image
+                    source={{ uri: getClothingSuggestion(weather.temp).imageUrl }}
+                    style={styles.cardImage}
+                  />
+                </View>
+                <Text style={styles.caption}>{getClothingSuggestion(weather.temp).name}</Text>
+                <Text numberOfLines={2} style={styles.small}>
+                  {getClothingSuggestion(weather.temp).description}
+                </Text>
+              </Card>
+
+              <View style={{ width: 12 }} />
+
+              <Card style={{ flex: 1 }} accent={PALETTE.teal}>
+                <Text style={styles.cardLabel}>持ち物</Text>
+                <View style={styles.cardImageBox}>
+                  <Image
+                    source={{ uri: getItemSuggestion(weather.temp, weather.description).imageUrl }}
+                    style={styles.cardImage}
+                  />
+                </View>
+                <Text style={styles.caption}>{getItemSuggestion(weather.temp, weather.description).name}</Text>
+                <Text numberOfLines={2} style={styles.small}>
+                  {getItemSuggestion(weather.temp, weather.description).description}
+                </Text>
+              </Card>
+            </View>
+          </>
+        ) : (
+          <>
+            <SectionTitle title="今日の天気" subtitle="データなし" accent={PALETTE.coral} />
+          </>
+        )}
 
         {/* Schedule */}
-        <SectionTitle title="今日の予定" accent={PALETTE.blue} />
-        <View style={styles.scheduleWrap}>
-          {schedules.map((s, idx) => (
-            <View key={s.id}>
-              <View style={styles.scheduleRow}>
-                <View style={[styles.dot, { backgroundColor: [PALETTE.coral, PALETTE.teal, PALETTE.yellow][idx % 3] }]} />
-                <View style={styles.scheduleIcon}>
-                  <MaterialCommunityIcons name={s.icon} size={18} color="#3F3F46" />
+        <SectionTitle 
+          title="今日の予定" 
+          subtitle={isLoadingCalendar ? '読み込み中...' : `${calendarEvents.length}件`}
+          accent={PALETTE.blue} 
+        />
+        {isLoadingCalendar ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={PALETTE.blue} />
+          </View>
+        ) : calendarEvents.length > 0 ? (
+          <View style={styles.scheduleWrap}>
+            {calendarEvents.map((event, idx) => (
+              <View key={event.id}>
+                <View style={styles.scheduleRow}>
+                  <View style={[styles.dot, { backgroundColor: [PALETTE.coral, PALETTE.teal, PALETTE.yellow][idx % 3] }]} />
+                  <View style={styles.scheduleIcon}>
+                    <MaterialCommunityIcons name={getEventIcon(event.title) as any} size={18} color="#3F3F46" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.scheduleTitle}>{event.title}</Text>
+                    <Text style={styles.scheduleTime}>{formatEventTime(event.startDate, event.endDate, event.allDay)}</Text>
+                  </View>
+                  {event.location ? <Text style={styles.scheduleSide}>{event.location}</Text> : null}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.scheduleTitle}>{s.title}</Text>
-                  <Text style={styles.scheduleTime}>{s.time}</Text>
-                </View>
-                {s.side ? <Text style={styles.scheduleSide}>{s.side}</Text> : null}
+                {idx !== calendarEvents.length - 1 && <View style={styles.divider} />}
               </View>
-              {idx !== schedules.length - 1 && <View style={styles.divider} />}
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyScheduleContainer}>
+            <MaterialCommunityIcons name="calendar-blank-outline" size={40} color={PALETTE.subtle} />
+            <Text style={styles.emptyScheduleText}>今日の予定はありません</Text>
+          </View>
+        )}
 
         {/* Carry Items */}
         <SectionTitle title="持ち物提案" accent={PALETTE.grape} />
@@ -499,6 +617,56 @@ const styles = StyleSheet.create({
   statHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   statValue: { fontSize: 20, fontWeight: "800", marginTop: 6, color: PALETTE.ink },
   delta: { marginTop: 6, fontSize: 12 },
+
+  // 天気情報のローディング・エラー表示用のスタイル
+  loadingContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    marginBottom: 16,
+  },
+  errorContainer: {
+    backgroundColor: `${PALETTE.bad}15`,
+    borderRadius: 18,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: `${PALETTE.bad}33`,
+    marginBottom: 16,
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: PALETTE.bad,
+    textAlign: 'center',
+  },
+  errorSubtext: {
+    fontSize: 12,
+    color: PALETTE.subtle,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  // 空のスケジュール表示用のスタイル
+  emptyScheduleContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 18,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.stroke,
+    marginBottom: 16,
+  },
+  emptyScheduleText: {
+    fontSize: 13,
+    color: PALETTE.subtle,
+    marginTop: 12,
+    textAlign: 'center',
+  },
 
   // デバッグボタン用のスタイル
   debugButton: {

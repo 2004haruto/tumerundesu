@@ -1,0 +1,19 @@
+{
+  "filename": "bento_1765200621578.jpg",
+  "timestamp": "2025-12-08T13:30:21.640266",
+  "mode": "hybrid",
+  "brightness": 74.55296945701357,
+  "angle": 87.18577575683594,
+  "inference_time_ms": 40.083885192871094,
+  "error_mm": 0.0,
+  "confidence": 0.8022531270980835,
+  "bbox": {
+    "x": 459,
+    "y": 332,
+    "width": 210,
+    "height": 28,
+    "width_mm": 29.13037330316742,
+    "height_mm": 3.884049773755656
+  },
+  "success": true
+}

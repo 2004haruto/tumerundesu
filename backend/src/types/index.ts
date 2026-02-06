@@ -46,6 +46,12 @@ export interface Favorite {
   id: number;
   user_id: number;
   menu_id: number;
+  title?: string;
+  image_url?: string;
+  calories?: number;
+  description?: string;
+  ingredients?: string | null;
+  steps?: string | null;
   created_at: Date;
 }
 

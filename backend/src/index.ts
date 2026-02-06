@@ -1,6 +1,9 @@
-// src/index.ts
-import cors from 'cors';
+
+// 環境変数の読み込みは最優先で行う
 import dotenv from 'dotenv';
+dotenv.config();
+
+import cors from 'cors';
 import express, { Application, NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
@@ -9,7 +12,7 @@ import helmet from 'helmet';
 import authRoutes from './routes/auth'; // MySQL使用
 import favoritesRoutes from './routes/favorites';
 import menusRoutes from './routes/menus';
-// import nutritionRoutes from './routes/nutrition'; // 一時的に無効化
+import nutritionRoutes from './routes/nutrition'; // 栄養API有効化
 import rakutenRecipesRoutes from './routes/rakutenRecipes';
 import reviewsRoutes from './routes/reviews';
 import shoppingListsRoutes from './routes/shoppingLists';
@@ -38,8 +41,8 @@ if (process.env.NODE_ENV === 'production') {
     origin: [
       'http://localhost:8081', // Expo開発サーバー（デフォルト）
       'http://localhost:8082', // Expo開発サーバー（代替ポート）
-      'http://10.200.2.88:8081', // Expo開発サーバー（IPアドレス）
-      'http://10.200.2.88:8082'  // Expo開発サーバー（IPアドレス + 代替ポート）
+      'http://10.108.0.146:8081', // Expo開発サーバー（IPアドレス）
+      'http://10.108.0.146:8082'  // Expo開発サーバー（IPアドレス + 代替ポート）
     ],
     credentials: true
   }));
@@ -108,7 +111,7 @@ app.use('/api/menus', menusRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/shopping-lists', shoppingListsRoutes);
 app.use('/api/reviews', reviewsRoutes);
-// app.use('/api/nutrition', nutritionRoutes); // 一時的に無効化
+app.use('/api/nutrition', nutritionRoutes); // 栄養API有効化
 app.use('/api/rakuten-recipes', rakutenRecipesRoutes);
 
 // 404エラーハンドラ

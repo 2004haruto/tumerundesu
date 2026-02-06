@@ -83,6 +83,12 @@ CREATE TABLE IF NOT EXISTS favorites (
   id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'お気に入りID',
   user_id     BIGINT UNSIGNED NOT NULL COMMENT 'ユーザーID',
   menu_id     BIGINT UNSIGNED NOT NULL COMMENT 'メニューID',
+  title       VARCHAR(255)              COMMENT 'レシピタイトル',
+  image_url   VARCHAR(512)              COMMENT 'レシピ画像URL',
+  calories    INT                       COMMENT 'カロリー',
+  description TEXT                      COMMENT 'レシピ説明',
+  ingredients TEXT                      COMMENT '材料(JSON文字列)',
+  steps       TEXT                      COMMENT '手順(JSON文字列)',
   created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '登録日時',
   PRIMARY KEY (id),
   UNIQUE KEY uq_favorites_user_menu (user_id, menu_id),
@@ -99,6 +105,12 @@ CREATE TABLE IF NOT EXISTS favorites (
     ON DELETE CASCADE
     ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='お気に入り';
+
+-- 既存DBにカラム追加用（手動実行用）
+-- 材料カラム追加
+ALTER TABLE favorites ADD COLUMN ingredients TEXT COMMENT '材料(JSON文字列)';
+-- 手順カラム追加
+ALTER TABLE favorites ADD COLUMN steps TEXT COMMENT '手順(JSON文字列)';
 
 -- 買い物リストテーブル
 CREATE TABLE IF NOT EXISTS shopping_lists (
@@ -232,6 +244,35 @@ ADD COLUMN IF NOT EXISTS bento_width VARCHAR(20) COMMENT '横幅(cm)',
 ADD COLUMN IF NOT EXISTS bento_length VARCHAR(20) COMMENT '縦(cm)', 
 ADD COLUMN IF NOT EXISTS bento_height VARCHAR(20) COMMENT '高さ(cm)',
 ADD COLUMN IF NOT EXISTS use_detailed_size BOOLEAN DEFAULT FALSE COMMENT '詳細サイズ使用フラグ';
+
+-- 栄養摂取ログテーブル（五大栄養素対応）
+CREATE TABLE IF NOT EXISTS nutrition_intake_logs (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '摂取ログID',
+  user_id       BIGINT UNSIGNED NOT NULL COMMENT 'ユーザーID',
+  intake_date   DATE            NOT NULL COMMENT '摂取日',
+  meal_type     ENUM('breakfast','lunch','dinner','snack') NOT NULL DEFAULT 'lunch' COMMENT '食事種類',
+  bento_id      VARCHAR(100)             COMMENT 'お弁当ID（自動生成されたもの）',
+  bento_name    VARCHAR(200)             COMMENT 'お弁当名',
+  calories      DECIMAL(7,2)    NOT NULL COMMENT '摂取カロリー',
+  protein       DECIMAL(5,2)             COMMENT 'タンパク質(g)',
+  carbs         DECIMAL(5,2)             COMMENT '炭水化物(g)',
+  fat           DECIMAL(5,2)             COMMENT '脂質(g)',
+  vitamins      DECIMAL(6,2)             COMMENT 'ビタミン総量(mg)',
+  minerals      DECIMAL(6,2)             COMMENT 'ミネラル総量(mg)',
+  items_json    JSON                     COMMENT 'お弁当構成要素(JSON)',
+  notes         TEXT                     COMMENT 'メモ',
+  created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '作成日時',
+  updated_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP 
+                                         ON UPDATE CURRENT_TIMESTAMP COMMENT '更新日時',
+  PRIMARY KEY (id),
+  KEY idx_user_date (user_id, intake_date),
+  KEY idx_user_meal (user_id, meal_type),
+  CONSTRAINT fk_nutrition_intake_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='栄養摂取ログ';
 
 -- 楽天レシピキャッシュテーブル
 CREATE TABLE IF NOT EXISTS rakuten_recipes (

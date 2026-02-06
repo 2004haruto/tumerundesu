@@ -22,7 +22,10 @@
               "NSExceptionAllowsInsecureHTTPLoads": true
             }
           }
-        }
+        },
+        "NSLocationWhenInUseUsageDescription": "このアプリはあなたの現在地を使用して天気情報を取得します。",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "このアプリはあなたの現在地を使用して天気情報を取得します。",
+        "NSCalendarsUsageDescription": "このアプリはあなたのカレンダーから今日の予定を表示します。"
       }
     },
     "android": {
@@ -30,7 +33,12 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "READ_CALENDAR"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

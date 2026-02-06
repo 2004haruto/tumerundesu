@@ -1,0 +1,19 @@
+{
+  "filename": "cropped_bento_1762700796791.jpg",
+  "timestamp": "2025-12-08T13:06:30.248213",
+  "mode": "yolo",
+  "brightness": 85.33916484431948,
+  "angle": 84.05924224853516,
+  "inference_time_ms": 293.1232452392578,
+  "error_mm": 48.476472416393186,
+  "confidence": 0.7731946706771851,
+  "bbox": {
+    "x": 59,
+    "y": 1,
+    "width": 668,
+    "height": 385,
+    "width_mm": 144.53689743694224,
+    "height_mm": 83.30345136709994
+  },
+  "success": true
+}

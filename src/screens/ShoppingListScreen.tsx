@@ -50,6 +50,7 @@ type Styles = {
   deleteBtn: ViewStyle;
   listTitle: TextStyle;
   listSub: TextStyle;
+  listQuantity: TextStyle;
   loadingText: TextStyle;
   emptyText: TextStyle;
   emptySubtext: TextStyle;
@@ -99,6 +100,7 @@ const styles = StyleSheet.create<Styles>({
   // テキストスタイル
   listTitle: { fontSize: 14, color: PALETTE.ink, fontWeight: '700' },
   listSub: { fontSize: 12, color: PALETTE.subtle, marginTop: 2 },
+  listQuantity: { fontSize: 14, fontWeight: '600', marginLeft: 8 },
   loadingText: { fontSize: 14, color: PALETTE.subtle, marginTop: 12 },
   emptyText: { fontSize: 16, fontWeight: '600', color: PALETTE.subtle, marginTop: 12 },
   emptySubtext: { fontSize: 14, color: PALETTE.subtle, marginTop: 4 },
@@ -161,6 +163,7 @@ type Item = {
   recipeName?: string;
   checked: boolean;
   createdAt?: string;
+  // price?: number; // 金額は不要なので削除
 };
 
 // デバッグヘルパー関数
@@ -194,26 +197,29 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
   }, [items]);
 
   useEffect(() => {
-    // デバッグ用：テキストレンダリングのチェック
-    const debugTextRendering = () => {
+    if (__DEV__) {
+      // デバッグ用：テキストレンダリングのチェック
       console.log('=== テキストレンダリングデバッグ ===');
       
       // アイテムのレンダリングチェック
       items.forEach(item => {
-        console.log(`アイテム名のレンダリング: ${item.name}`);
-        console.log(`レシピ名のレンダリング: ${item.recipeName || '未設定'}`);
-        console.log(`カテゴリのレンダリング: ${item.category || '未分類'}`);
+        const name = item.name || '';
+        const recipe = item.recipeName || '未設定';
+        const category = item.category || '未分類';
+        
+        console.log('アイテム情報:');
+        console.log(`- 名前: ${name}`);
+        console.log(`- レシピ: ${recipe}`);
+        console.log(`- カテゴリ: ${category}`);
         console.log('---');
       });
 
       // レシピグループのレンダリングチェック
       Object.keys(itemsByRecipe).forEach(recipeName => {
-        console.log(`レシピグループヘッダーのレンダリング: ${recipeName}`);
+        console.log(`レシピグループ: ${recipeName}`);
         console.log('===');
       });
-    };
-
-    debugTextRendering();
+    }
   }, [items, itemsByRecipe]);
 
   // データ取得
@@ -291,9 +297,7 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
     const clearList = () => {
     if (!token) return;
     
-    const title = "確認";
-    const message = "リストをすべて削除しますか？";
-    Alert.alert(title, message, [
+    Alert.alert("確認", "リストをすべて削除しますか？", [
       { text: "キャンセル", style: "cancel" },
       { 
         text: "削除する", 
@@ -304,7 +308,7 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
             setItems([]);
           } catch (error) {
             console.error('一括削除エラー:', error);
-            Alert.alert('エラー', 'リストのクリアに失敗しました');
+            Alert.alert("エラー", "リストのクリアに失敗しました");
             loadShoppingList();
           }
         }
@@ -317,15 +321,13 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
     
     const completedItems = items.filter(i => i.checked);
     if (completedItems.length === 0) {
-      Alert.alert('情報', '完了したアイテムがありません');
+      Alert.alert("情報", "完了したアイテムがありません");
       return;
     }
 
-    const title = "確認";
-    const message = `完了した${completedItems.length}個のアイテムを削除しますか？`;
     Alert.alert(
-      title,
-      message,
+      "確認",
+      `完了した${completedItems.length}個のアイテムを削除しますか？`,
       [
         { text: "キャンセル", style: "cancel" },
         { 
@@ -337,7 +339,7 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
             setItems(prev => prev.filter(i => !i.checked));
           } catch (error) {
             console.error('完了アイテム削除エラー:', error);
-            Alert.alert('エラー', '削除に失敗しました');
+            Alert.alert("エラー", "削除に失敗しました");
             loadShoppingList();
           }
         }
@@ -346,14 +348,18 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const shareList = async () => {
-    const lines = items.map(
-      (i) => `${i.checked ? "☑" : "☐"} ${i.name}${i.quantity ? `（${i.quantity}）` : ""}`
-    );
-    const shareMessage = `買い物リスト\n\n${lines.join("\n")}`;
     try {
+      const formattedItems = items.map(i => {
+        const checkbox = i.checked ? "☑" : "☐";
+        const quantity = i.quantity ? `（${i.quantity}）` : "";
+        return `${checkbox} ${i.name}${quantity}`;
+      });
+      
+      const shareContent = ["買い物リスト", "", ...formattedItems].join("\n");
+      
       await Share.share({
         title: "ショッピングリスト",
-        message: shareMessage,
+        message: shareContent,
       });
     } catch (e) {
       Alert.alert("エラー", "共有に失敗しました");
@@ -369,37 +375,45 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
       '穀物': 'grain',
       '果物': 'fruit-cherries',
       'その他': 'food-variant',
-      '未分類': 'food-variant',
     };
     return icons[category] || 'food-variant';
   };
 
   const renderItem = ({ item }: { item: Item }) => {
-    // 各レンダリング要素のデバッグ
-    const debugElement = (component: string, content: any) => {
-      console.log(`デバッグ [${component}]:`, content);
-    };
     return (
       <TouchableOpacity onPress={() => toggleCheck(item.id, item.checked)} style={styles.listItem}>
         <View style={styles.listLeft}>
-          <View style={[styles.thumb, { backgroundColor: item.checked ? `${PALETTE.good}22` : `${PALETTE.blue}22` }]}>
+          <View style={[styles.thumb, { backgroundColor: item.checked ? `${PALETTE.good}22` : `${PALETTE.blue}22` }]}> 
             <MaterialCommunityIcons 
-              name={getCategoryIcon(item.category)} 
+              name={getCategoryIcon(item.category || '未分類')} 
               size={18} 
               color={item.checked ? PALETTE.good : PALETTE.blue} 
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text
-              style={[
-                styles.listTitle,
-                item.checked ? { color: PALETTE.subtle, textDecorationLine: "line-through" } : null,
-              ]}
-              numberOfLines={1}
-            >
-              {item.name}
-            </Text>
-            {(item.category || item.quantity) && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Text
+                style={[
+                  styles.listTitle,
+                  { flex: 1 },
+                  item.checked ? { color: PALETTE.subtle, textDecorationLine: "line-through" } : null,
+                ]}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+              <Text style={{ fontWeight: '700', color: PALETTE.subtle, marginHorizontal: 2 }}>：</Text>
+              <Text
+                style={[
+                  styles.listQuantity,
+                  item.checked ? { color: PALETTE.subtle } : { color: PALETTE.blue },
+                  { minWidth: 48, textAlign: 'right' }
+                ]}
+              >
+                {item.quantity && item.quantity.trim() !== '' ? item.quantity : '数量未設定'}
+              </Text>
+            </View>
+            {item.category && item.category !== '未分類' && (
               <Text
                 style={[
                   styles.listSub,
@@ -407,13 +421,11 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
                 ]}
                 numberOfLines={1}
               >
-                <Text>{item.category || '未分類'}</Text>
-                {item.quantity ? <Text> • {item.quantity}</Text> : null}
+                {item.category}
               </Text>
             )}
           </View>
         </View>
-
         <View style={styles.listRight}>
           <TouchableOpacity 
             onPress={() => deleteItem(item.id)}
@@ -451,7 +463,9 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color="#0B1220" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>ショッピングリスト</Text>
+        <Text style={styles.topBarTitle}>
+          <Text>ショッピングリスト</Text>
+        </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <TouchableOpacity style={styles.iconBtn}>
             <MaterialCommunityIcons name="cart" size={18} color="#0B1220" />
@@ -470,52 +484,67 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={PALETTE.blue} />
-            <Text style={styles.loadingText}>読み込み中...</Text>
+            <Text style={styles.loadingText}>
+              <Text>読み込み中...</Text>
+            </Text>
           </View>
         ) : (
           <>
             {/* メインリスト - 料理ごとにグループ化 */}
             <View style={styles.sectionTitleRow}>
               <View style={[styles.sectionDot, { backgroundColor: PALETTE.blue }]} />
-              <Text style={styles.sectionTitle}>買い物リスト</Text>
-              <Text style={styles.sectionSubtitle}>{items.length}個のアイテム</Text>
+              <Text style={styles.sectionTitle}>
+                <Text>買い物リスト</Text>
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                <Text>{`${items.length}個のアイテム`}</Text>
+              </Text>
             </View>
             
             {items.length > 0 ? (
-              Object.keys(itemsByRecipe).map((recipeName, recipeIndex) => {
-                const recipeItems = itemsByRecipe[recipeName];
-                const firstItem = recipeItems[0];
-                const formattedDate = firstItem.createdAt 
-                  ? new Date(firstItem.createdAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                  : null;
-                
-                return (
+              <>
+                {Object.keys(itemsByRecipe).map((recipeName, recipeIndex) => {
+                  const recipeItems = itemsByRecipe[recipeName];
+                  const firstItem = recipeItems[0];
+                  const formattedDate = firstItem.createdAt 
+                    ? new Date(firstItem.createdAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : null;
+                  return (
                     <View key={`recipe-${recipeIndex}-${recipeName}`} style={{ marginBottom: 12 }}>
-                    <View style={styles.recipeHeader}>
-                      <MaterialCommunityIcons name="silverware-fork-knife" size={18} color={PALETTE.coral} />
-                      <Text style={styles.recipeName}>{recipeName || "未設定"}</Text>
-                      {formattedDate && (
-                        <Text style={styles.recipeDate}>{formattedDate}</Text>
-                      )}
+                      <View style={styles.recipeHeader}>
+                        <MaterialCommunityIcons name="silverware-fork-knife" size={18} color={PALETTE.coral} />
+                        <Text style={styles.recipeName}>
+                          <Text>{recipeName || "未設定"}</Text>
+                        </Text>
+                        {formattedDate && (
+                          <Text style={styles.recipeDate}>
+                            <Text>{formattedDate}</Text>
+                          </Text>
+                        )}
+                      </View>
+                      {/* この料理の材料リスト */}
+                      <Card style={styles.listCard}>
+                        {recipeItems.map((item, i) => (
+                          <View key={item.id}>
+                            {renderItem({ item })}
+                            {i !== recipeItems.length - 1 ? <View style={styles.divider} /> : null}
+                          </View>
+                        ))}
+                      </Card>
                     </View>
-                    {/* この料理の材料リスト */}
-                    <Card style={styles.listCard}>
-                      {recipeItems.map((item, i) => (
-                        <View key={item.id}>
-                          {renderItem({ item })}
-                          {i !== recipeItems.length - 1 ? <View style={styles.divider} /> : null}
-                        </View>
-                      ))}
-                    </Card>
-                  </View>
-                );
-              })
+                  );
+                })}
+              </>
             ) : (
-                <Card style={styles.listCard}>
+              <Card style={styles.listCard}>
                 <View style={styles.emptyState}>
                   <MaterialCommunityIcons name="cart-outline" size={48} color={PALETTE.subtle} />
-                  <Text style={styles.emptyText}>アイテムがありません</Text>
-                  <Text style={styles.emptySubtext}>メニューから材料を追加してください</Text>
+                  <Text style={styles.emptyText}>
+                    <Text>アイテムがありません</Text>
+                  </Text>
+                  <Text style={styles.emptySubtext}>
+                    <Text>メニューから材料を追加してください</Text>
+                  </Text>
                 </View>
               </Card>
             )}
@@ -525,23 +554,35 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
               <>
                 <View style={styles.sectionTitleRow}>
                   <View style={[styles.sectionDot, { backgroundColor: PALETTE.good }]} />
-                  <Text style={styles.sectionTitle}>{`進捗状況`}</Text>
+                  <Text style={styles.sectionTitle}>
+                    <Text>進捗状況</Text>
+                  </Text>
                 </View>
                 <Card style={styles.statsCard}>
                   <View style={styles.statsGrid}>
                     <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{items.filter(i => i.checked).length}</Text>
-                      <Text style={styles.statLabel}>完了</Text>
-                    </View>
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{items.filter(i => !i.checked).length}</Text>
-                      <Text style={styles.statLabel}>残り</Text>
+                      <Text style={styles.statValue}>
+                        <Text>{items.filter(i => i.checked).length}</Text>
+                      </Text>
+                      <Text style={styles.statLabel}>
+                        <Text>完了</Text>
+                      </Text>
                     </View>
                     <View style={styles.statItem}>
                       <Text style={styles.statValue}>
-                        {Math.round((items.filter(i => i.checked).length / items.length) * 100)}%
+                        <Text>{items.filter(i => !i.checked).length}</Text>
                       </Text>
-                      <Text style={styles.statLabel}>進捗</Text>
+                      <Text style={styles.statLabel}>
+                        <Text>残り</Text>
+                      </Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>
+                        <Text>{`${Math.round((items.filter(i => i.checked).length / items.length) * 100)}%`}</Text>
+                      </Text>
+                      <Text style={styles.statLabel}>
+                        <Text>進捗</Text>
+                      </Text>
                     </View>
                   </View>
                 </Card>
@@ -549,32 +590,32 @@ const ShoppingListScreen: React.FC<Props> = ({ navigation }) => {
             )}
 
             {/* アクションボタン */}
-            <SectionTitle title={`アクション`} accent={PALETTE.grape} />
+            <SectionTitle title="アクション" accent={PALETTE.grape} />
             <Card style={styles.actionsCard}>
               <Button 
                 variant="outline" 
-                label={`完了アイテムを削除`}
+                label="完了アイテムを削除"
                 onPress={clearCompleted} 
                 accent={PALETTE.yellow}
                 disabled={!items.some(i => i.checked)}
               />
               <Button 
                 variant="outline" 
-                label={`リストをクリア`}
+                label="リストをクリア"
                 onPress={clearList} 
                 accent={PALETTE.bad}
                 disabled={!hasAny}
               />
               <Button 
                 variant="outline" 
-                label={`リストを共有`}
+                label="リストを共有"
                 onPress={shareList} 
                 accent={PALETTE.blue}
                 disabled={!hasAny}
               />
               <Button
                 variant="solid"
-                label={`すべてチェック`}
+                label="すべてチェック"
                 onPress={checkAll}
                 accent={PALETTE.good}
                 disabled={allChecked || !hasAny}
@@ -604,9 +645,13 @@ const SectionTitle: React.FC<{ title: string; subtitle?: string | number; accent
 }) => (
   <View style={styles.sectionTitleRow}>
     <View style={[styles.sectionDot, { backgroundColor: accent }]} />
-    <Text style={styles.sectionTitle}>{title}</Text>
+    <Text style={styles.sectionTitle}>
+      <Text>{title}</Text>
+    </Text>
     {subtitle !== undefined && subtitle !== null ? (
-      <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+      <Text style={styles.sectionSubtitle}>
+        <Text>{String(subtitle)}</Text>
+      </Text>
     ) : null}
   </View>
 );
@@ -640,7 +685,7 @@ const Button: React.FC<{
         variant === "solid" ? { color: "#fff" } : { color: accent },
       ]}
     >
-      {label}
+      <Text>{label}</Text>
     </Text>
   </TouchableOpacity>
 );
@@ -678,13 +723,13 @@ export default ShoppingListScreen;
 // デバッグ用のマーカーコンポーネント
 const DebugMarker: React.FC<{ id: string }> = ({ id }) => {
   useEffect(() => {
-    console.log(`デバッグマーカー: ${id} がレンダリングされました`);
-    return () => console.log(`デバッグマーカー: ${id} がアンマウントされました`);
+    if (__DEV__) {
+      console.log(`デバッグマーカー: ${id} がレンダリングされました`);
+      return () => console.log(`デバッグマーカー: ${id} がアンマウントされました`);
+    }
   }, [id]);
   return null;
-};
-
-const Card: React.FC<{ style?: any; children: React.ReactNode; accent?: string }> = ({ style, children, accent }) => {
+};const Card: React.FC<{ style?: any; children: React.ReactNode; accent?: string }> = ({ style, children, accent }) => {
   const cardStyle = [
     styles.card,
     style,
@@ -715,7 +760,9 @@ const NavItem: React.FC<{
     <TouchableOpacity style={styles.navItem} activeOpacity={0.8} onPress={onPress}>
       <View style={pillStyle}>
         <MaterialCommunityIcons name={name} size={18} color={active ? color : "#8A8A8A"} />
-        <Text style={labelStyle}>{label}</Text>
+        <Text style={labelStyle}>
+          <Text>{label}</Text>
+        </Text>
       </View>
     </TouchableOpacity>
   );

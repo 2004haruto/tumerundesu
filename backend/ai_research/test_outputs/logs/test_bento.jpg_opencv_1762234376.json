@@ -1,0 +1,19 @@
+{
+  "filename": "test_bento.jpg",
+  "timestamp": "2025-11-04T05:32:56.239454",
+  "mode": "opencv",
+  "brightness": 236.07603515625,
+  "angle": 36.0,
+  "inference_time_ms": 3.8535594940185547,
+  "error_mm": 0.0,
+  "confidence": 0.7,
+  "bbox": {
+    "x": 217,
+    "y": 162,
+    "width": 207,
+    "height": 157,
+    "width_mm": 207.0,
+    "height_mm": 157.0
+  },
+  "success": true
+}

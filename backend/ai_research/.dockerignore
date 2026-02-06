@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# 出力ファイル
+outputs/
+uploads/
+*.log
+*.png
+*.jpg
+*.jpeg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 環境変数（Dockerではdocker-compose.ymlで管理）
+.env
+
+# テストファイル
+test_*.jpg
+test_*.png
+test_bento.jpg
+
+# モデルファイル（大容量のため別途管理）
+models/*.weights
+models/*.cfg

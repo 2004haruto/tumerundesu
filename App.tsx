@@ -1,7 +1,7 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, LogBox, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import BentoMenuScreen from './src/screens/BentoMenuScreen';
 import FavoritesScreen from './src/screens/FavoritesScreen';
@@ -11,12 +11,18 @@ import MenuDetailScreen from './src/screens/MenuDetailScreen';
 import MenuReviewScreen from './src/screens/MenuReviewScreen';
 import NutritionDashboardScreen from './src/screens/NutritionDashboardScreen';
 import PackingGuideScreen from './src/screens/PackingGuideScreen';
-import ProposalHistoryScreen from './src/screens/ProposalHistoryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ShoppingListScreen from './src/screens/ShoppingListScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 
+// 特定のエラーメッセージを非表示にする
+LogBox.ignoreLogs([
+  'Text strings must be rendered within a <Text> component',
+]);
+
 // ナビゲーションのパラメータ型を定義
+// お気に入りメニュー型をimport
+import type { Favorite } from './src/screens/BentoMenuScreen';
 export type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
@@ -29,8 +35,11 @@ export type RootStackParamList = {
     recipe?: any; // ProcessedRecipe
     bento?: any;  // GeneratedBento
   };
-  Favorites: undefined;
-  PackingGuide: undefined;
+  Favorites: { favorites: Favorite[] } | undefined;
+  PackingGuide: { 
+    riceRatio?: number; 
+    layoutType?: '2split' | '3split' | '4split';
+  } | undefined;
   MenuReview: undefined;
   ShoppingList: undefined;
 };
@@ -70,7 +79,6 @@ function AppNavigator() {
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="NutritionDashboard" component={NutritionDashboardScreen} />
             <Stack.Screen name="BentoMenu" component={BentoMenuScreen} />
-            <Stack.Screen name="ProposalHistory" component={ProposalHistoryScreen} />
             <Stack.Screen name="MenuDetail" component={MenuDetailScreen} />
             <Stack.Screen name="Favorites" component={FavoritesScreen} />
             <Stack.Screen name="PackingGuide" component={PackingGuideScreen} />

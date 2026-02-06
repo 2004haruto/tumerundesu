@@ -1,0 +1,17 @@
+{
+  "cropped_bento_1762523798275.jpg": {
+    "width_mm": 185.0,
+    "height_mm": 110.0,
+    "description": "切り取り済み弁当画像1 - 動的生成（185.0×110.0mm）"
+  },
+  "cropped_bento_1762523839223.jpg": {
+    "width_mm": 185.0,
+    "height_mm": 110.0,
+    "description": "切り取り済み弁当画像2 - 動的生成（185.0×110.0mm）"
+  },
+  "cropped_bento_1762524617674.jpg": {
+    "width_mm": 185.0,
+    "height_mm": 110.0,
+    "description": "切り取り済み弁当画像3 - 動的生成（185.0×110.0mm）"
+  }
+}

@@ -1,24 +1,27 @@
 // src/screens/FavoritesScreen.tsx
-import React from "react";
-import {
-  SafeAreaView,
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  FlatList,
-  Platform,
-  Dimensions,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useState } from "react";
+import {
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { RootStackParamList } from '../../App';
+import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../services/api';
+import type { Favorite } from "./BentoMenuScreen";
 
 const { width } = Dimensions.get("window");
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Favorites'>;
+
+/** ===== Palette ===== */
 
 /** ===== Palette ===== */
 const PALETTE = {
@@ -35,61 +38,56 @@ const PALETTE = {
   bad: "#E25555",
 };
 
-type BentoType = {
-  id: string;
-  title: string;
-  desc: string;
-  noteRight?: string; // 右側の短い補足文
-  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
-};
 
-type BentoCard = {
-  id: string;
-  title: string; // 2〜3行の説明テキスト想定
-  tag?: string;  // 「詳細を見る」などの小さなCTA
-};
 
-const TYPES: BentoType[] = [
-  {
-    id: "1",
-    title: "鶏肉の照り焼き弁当",
-    desc: "甘辛の王道。",
-    noteRight: "ご飯と鶏肉が相性バツグン",
-    icon: "food-drumstick",
-  },
-  {
-    id: "2",
-    title: "鮭の塩焼き弁当",
-    desc: "ふっくら塩分でご飯が進む。",
-    noteRight: "シンプルで栄養高め。",
-    icon: "fish",
-  },
-  {
-    id: "3",
-    title: "牛丼弁当",
-    desc: "甘辛だれ、紅生姜をトッピング。",
-    noteRight: "寒い日の温かい一品。",
-    icon: "cow",
-  },
-  {
-    id: "4",
-    title: "野菜炒め弁当",
-    desc: "たっぷりの野菜でヘルシー。",
-    noteRight: "栄養価が高く、節約的な選択。",
-    icon: "leaf",
-  },
-];
 
-const CARDS: BentoCard[] = [
-  { id: "c1", tag: "詳細を見る", title: "鶏肉の照り焼き弁当\n自家製タレが自慢。" },
-  { id: "c2", tag: "詳細を見る", title: "鮭の塩焼き弁当\nふっくら鮭がクセになる。" },
-  { id: "c3", tag: "詳細を見る", title: "卵焼きの厚みが自慢\n甘辛のしょうゆ味品。" },
-  { id: "c4", tag: "詳細を見る", title: "ふっくら鮭ワンポイント\n栄養バランス◎。" },
-  { id: "c5", tag: "詳細を見る", title: "牛丼弁当\n柔らかい牛肉に玉ねぎの甘み。" },
-  { id: "c6", tag: "詳細を見る", title: "野菜炒め弁当\nたっぷりの野菜で栄養満点。" },
-];
+const FavoritesScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { user, token } = useAuth();
+  // BentoMenuScreenから渡されたお気に入りリストを取得
+  // 初期値はpropsから受け取る
+  const [favorites, setFavorites] = useState<Favorite[]>(route.params?.favorites || []);
+  // チェック状態を管理
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
-const FavoritesScreen: React.FC<Props> = ({ navigation }) => {
+  // チェックボックスの切り替え
+  const toggleCheck = (id: string) => {
+    setCheckedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // 削除ボタン押下時
+  const handleDelete = async () => {
+    if (checkedIds.size === 0) return;
+    // 画面上から先に削除
+    setFavorites(prev => prev.filter(f => !checkedIds.has(f.id)));
+    // DBからも削除
+    if (user && token) {
+      const deletePromises = Array.from(checkedIds).map(async (menuId) => {
+        try {
+          await fetch(`${API_BASE_URL}/favorites`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ user_id: user.id, menu_id: menuId }),
+          });
+        } catch (e) {
+          // エラーは無視（画面上は即時反映）
+        }
+      });
+      await Promise.all(deletePromises);
+    }
+    setCheckedIds(new Set());
+    // TODO: 必要ならAPIにも削除リクエストを送る
+  };
   return (
     <SafeAreaView style={styles.safe}>
       {/* 背景ブロブ */}
@@ -123,39 +121,95 @@ const FavoritesScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* お弁当の種類 */}
-        <SectionTitle title="お弁当の種類" accent={PALETTE.teal} />
-        <Card style={styles.listCard}>
-          {TYPES.map((item, i) => (
-            <View key={item.id}>
-              <TypeRow item={item} />
-              {i !== TYPES.length - 1 && <View style={styles.divider} />}
-            </View>
-          ))}
-        </Card>
 
-        {/* お気に入りコレクション */}
+
+        {/* お気に入りコレクション（全件リスト表示） */}
         <SectionTitle title="お気に入りコレクション" accent={PALETTE.coral} />
-        <View style={styles.grid}>
-          {CARDS.map((c, idx) => (
-            <Card key={c.id} style={[styles.gridCard, { backgroundColor: `${[PALETTE.coral, PALETTE.teal, PALETTE.yellow, PALETTE.grape, PALETTE.blue][idx % 5]}12` }]}>
-              {!!c.tag && (
-                <TouchableOpacity style={[styles.cardTag, { backgroundColor: `${[PALETTE.coral, PALETTE.teal, PALETTE.yellow, PALETTE.grape, PALETTE.blue][idx % 5]}22` }]}>
-                  <Text style={[styles.cardTagText, { color: [PALETTE.coral, PALETTE.teal, PALETTE.yellow, PALETTE.grape, PALETTE.blue][idx % 5] }]}>{c.tag}</Text>
+        <Card style={styles.listCard}>
+          {favorites.length === 0 ? (
+            <Text style={{ color: PALETTE.subtle, textAlign: 'center', padding: 16 }}>お気に入りメニューがありません</Text>
+          ) : (
+            favorites.map((f, i) => (
+              <View key={`favorite-${i}-${f.id}`} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity 
+                  activeOpacity={0.7} 
+                  style={[styles.listItem, { flex: 1 }]} 
+                  onPress={() => {
+                    let ingredients = f.recipe?.ingredients;
+                    if (typeof ingredients === 'string') {
+                      try { ingredients = JSON.parse(ingredients); } catch { ingredients = []; }
+                    }
+                    if (!Array.isArray(ingredients)) ingredients = [];
+                    let instructions = f.recipe?.instructions;
+                    // stepsプロパティが存在する場合はそちらも考慮
+                    // @ts-ignore
+                    if ((!instructions || instructions.length === 0) && f.recipe?.steps) {
+                      // @ts-ignore
+                      instructions = f.recipe.steps;
+                    }
+                    if (typeof instructions === 'string') {
+                      try { instructions = JSON.parse(instructions); } catch { instructions = []; }
+                    }
+                    if (!Array.isArray(instructions)) instructions = [];
+                    navigation.navigate('MenuDetail', {
+                      recipe: {
+                        id: f.id,
+                        title: f.title,
+                        imageUrl: f.image_url,
+                        calories: f.kcal,
+                        description: f.description,
+                        ingredients,
+                        instructions,
+                      }
+                    });
+                  }}
+                >
+                  <View style={styles.listLeft}>
+                    <View style={[styles.thumb, { backgroundColor: `${[PALETTE.teal, PALETTE.grape, PALETTE.yellow][i % 3]}22` }]}> 
+                      <MaterialCommunityIcons
+                        name={(f.icon as any) ?? "silverware-fork-knife"}
+                        size={18}
+                        color={[PALETTE.teal, PALETTE.grape, PALETTE.yellow][i % 3]}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.listTitle} numberOfLines={1}>
+                        {f.title}
+                      </Text>
+                      {!!f.sub && <Text style={styles.listSub} numberOfLines={1}>{f.sub}</Text>}
+                    </View>
+                  </View>
+                  <View style={styles.listRight}>
+                    <Text style={styles.listKcal}>
+                      {f.kcal} <Text style={styles.listKcalUnit}>kcal</Text>
+                    </Text>
+                    {f.recipe && <Text style={styles.apiIndicator}>🌟</Text>}
+                    {f.bentoId && <Text style={styles.bentoIndicator}>🍱</Text>}
+                  </View>
                 </TouchableOpacity>
-              )}
-              <Text numberOfLines={3} style={styles.cardText}>
-                {c.title}
-              </Text>
-            </Card>
-          ))}
-        </View>
+                {/* チェックボックス */}
+                <TouchableOpacity
+                  onPress={() => toggleCheck(f.id)}
+                  style={{ marginLeft: 8, padding: 8 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialCommunityIcons
+                    name={checkedIds.has(f.id) ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                    size={24}
+                    color={PALETTE.teal}
+                  />
+                </TouchableOpacity>
+                {i !== favorites.length - 1 && <View style={styles.divider} />}
+              </View>
+            ))
+          )}
+        </Card>
 
         {/* アクション */}
         <SectionTitle title="管理" accent={PALETTE.grape} />
         <Card style={styles.actionsCard}>
-          <Button variant="outline" label="お弁当の削除" onPress={() => {}} accent={PALETTE.bad} />
-          <Button variant="outline" label="リストをクリア" onPress={() => {}} accent={PALETTE.subtle} />
+          <Button variant="outline" label="お弁当の削除" onPress={handleDelete} accent={PALETTE.bad} />
+          <Button variant="outline" label="リストをクリア" onPress={() => setFavorites([])} accent={PALETTE.subtle} />
         </Card>
       </ScrollView>
 
@@ -241,53 +295,24 @@ const NavItem: React.FC<{
   );
 };
 
-const TypeRow = ({ item }: { item: BentoType }) => {
-  const colors = [PALETTE.coral, PALETTE.teal, PALETTE.yellow, PALETTE.grape];
-  const color = colors[parseInt(item.id) % colors.length];
-  
-  return (
-    <TouchableOpacity style={styles.listItem} activeOpacity={0.7}>
-      <View style={styles.listLeft}>
-        <View style={[styles.thumb, { backgroundColor: `${color}22` }]}>
-          {item.icon ? (
-            <MaterialCommunityIcons name={item.icon} size={18} color={color} />
-          ) : (
-            <MaterialCommunityIcons name="silverware-fork-knife" size={18} color={color} />
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.listTitle}>{item.title}</Text>
-          <Text style={styles.listSub}>{item.desc}</Text>
-        </View>
-      </View>
-      {!!item.noteRight && (
-        <View style={styles.noteContainer}>
-          <Text numberOfLines={2} style={styles.listNote}>
-            {item.noteRight}
-          </Text>
-        </View>
-      )}
-      <Ionicons name="chevron-forward" size={18} color={PALETTE.subtle} />
-    </TouchableOpacity>
-  );
-};
 
+type ButtonProps = {
+  label: string;
+  onPress: () => void;
+  variant?: "solid" | "outline";
+  accent?: string;
+};
 const Button = ({
   label,
   onPress,
   variant = "solid",
   accent = PALETTE.coral,
-}: {
-  label: string;
-  onPress: () => void;
-  variant?: "solid" | "outline";
-  accent?: string;
-}) => (
+}: ButtonProps) => (
   <TouchableOpacity
     onPress={onPress}
     style={[
       styles.button,
-      variant === "solid" 
+      variant === "solid"
         ? { backgroundColor: accent }
         : { backgroundColor: "#fff", borderWidth: 1, borderColor: accent }
     ]}
@@ -306,6 +331,7 @@ const Button = ({
 /* ---------- styles ---------- */
 
 const styles = StyleSheet.create({
+
   safe: { flex: 1, backgroundColor: PALETTE.bg },
   container: { flex: 1, paddingHorizontal: 16, paddingTop: 30 },
 
@@ -346,7 +372,7 @@ const styles = StyleSheet.create({
   sectionDot: { width: 8, height: 8, borderRadius: 4 },
   sectionTitle: { fontSize: 15, fontWeight: "800", color: PALETTE.ink },
   sectionSubtitle: { fontSize: 12, color: PALETTE.subtle },
-  
+
   card: {
     backgroundColor: "#fff",
     borderRadius: 18,
@@ -361,6 +387,11 @@ const styles = StyleSheet.create({
     zIndex: 1,
     marginBottom: 12,
   },
+  listRight: { alignItems: "flex-end" },
+  listKcal: { fontSize: 13, color: PALETTE.ink, fontWeight: "700" },
+  listKcalUnit: { fontSize: 11, color: PALETTE.subtle, fontWeight: "600" },
+  apiIndicator: { fontSize: 10, color: PALETTE.yellow, textAlign: "center", marginTop: 2 },
+  bentoIndicator: { fontSize: 10, color: PALETTE.coral, textAlign: "center", marginTop: 2 },
 
   listCard: { padding: 16 },
   listItem: {

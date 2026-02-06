@@ -1,0 +1,42 @@
+{
+  "total_images": 3,
+  "folder": "./test_images_cropped",
+  "modes": {
+    "opencv": {
+      "mode": "opencv",
+      "total_images": 3,
+      "success_count": 3,
+      "success_rate": 1.0,
+      "avg_inference_time_ms": 3.4900506337483725,
+      "avg_error_mm": 0.0,
+      "std_error_mm": 0.0,
+      "min_error_mm": 0.0,
+      "max_error_mm": 0.0,
+      "avg_confidence": 0.6999999999999998
+    },
+    "yolo": {
+      "mode": "yolo",
+      "total_images": 3,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "avg_inference_time_ms": 0.0,
+      "avg_error_mm": 0.0,
+      "std_error_mm": 0.0,
+      "min_error_mm": 0.0,
+      "max_error_mm": 0.0,
+      "avg_confidence": 0.0
+    },
+    "hybrid": {
+      "mode": "hybrid",
+      "total_images": 3,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "avg_inference_time_ms": 0.17841657002766928,
+      "avg_error_mm": 0.0,
+      "std_error_mm": 0.0,
+      "min_error_mm": 0.0,
+      "max_error_mm": 0.0,
+      "avg_confidence": 0.0
+    }
+  }
+}

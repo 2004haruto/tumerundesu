@@ -11,25 +11,25 @@ const getApiUrl = () => {
   }
   
   if (__DEV__) {
+    // 環境変数がない場合の警告
+    console.warn('⚠️ EXPO_PUBLIC_API_URL is not set in .env file');
+    console.warn('⚠️ Using fallback localhost. Please set EXPO_PUBLIC_API_URL in .env');
+    
     let host: string;
     
-    // プラットフォームに応じてホストを選択
+    // プラットフォームに応じてホストを選択（フォールバック）
     if (Platform.OS === 'web') {
       // Webブラウザの場合はlocalhost
       host = 'localhost';
     } else if (Platform.OS === 'android') {
-      // Android実機またはエミュレータの場合
-      // エミュレータの場合は10.0.2.2、実機の場合はPCのIPアドレス
-      host = '10.200.2.88'; // PCの新しいIPアドレス
-    } else if (Platform.OS === 'ios') {
-      // iOSシミュレータ・実機の場合はPCのIPアドレスが必要
-      host = '10.200.2.88'; // PCの新しいIPアドレス
+      // Android エミュレータの場合は10.0.2.2
+      host = '10.0.2.2';
     } else {
-      // その他の場合はPCのIPアドレスを使用
-      host = '10.200.2.88';
+      // iOS/その他の場合はlocalhostをフォールバック
+      host = 'localhost';
     }
     
-    console.log(`Platform: ${Platform.OS}, API Host: ${host}`);
+    console.log(`Platform: ${Platform.OS}, Fallback API Host: ${host}`);
     return `http://${host}:3001/api`;
   }
   
@@ -38,7 +38,7 @@ const getApiUrl = () => {
 };
 
 // 環境変数を優先して使用
-const API_BASE_URL = getApiUrl();
+export const API_BASE_URL = getApiUrl();
 
 // デバッグ用：API URLをコンソールに出力
 console.log('API Base URL:', API_BASE_URL);

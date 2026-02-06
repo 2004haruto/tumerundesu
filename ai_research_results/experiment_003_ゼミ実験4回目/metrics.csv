@@ -1,0 +1,4 @@
+mode,total_images,success_count,success_rate,avg_inference_time_ms,avg_error_mm,std_error_mm,min_error_mm,max_error_mm,avg_confidence
+opencv,3,3,1.0,3.4900506337483725,0.0,0.0,0.0,0.0,0.6999999999999998
+yolo,3,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid,3,0,0.0,0.17841657002766928,0.0,0.0,0.0,0.0,0.0

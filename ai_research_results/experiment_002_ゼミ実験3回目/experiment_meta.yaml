@@ -1,0 +1,95 @@
+experiment:
+  name: '#002 - ゼミ実験3回目'
+  date: '2025-11-07T14:37:49.617859'
+  researcher: AI Seminar Team
+  purpose: 弁当箱検出AIの精度・速度比較実験
+model:
+  name: YOLOv3 + OpenCV
+  framework: OpenCV DNN + YOLO
+  version: '3.0'
+  input_size:
+  - 416
+  - 416
+  detection_modes:
+  - opencv
+  - yolo
+  - hybrid
+hyperparameters:
+  confidence_threshold: 0.5
+  nms_threshold: 0.4
+  learning_rate: null
+  batch_size: 1
+dataset:
+  name: Bento Box Dataset
+  total_images: 0
+  train_split: 0.0
+  val_split: 0.0
+  test_split: 1.0
+  classes:
+  - bento_box
+  annotation_format: bbox
+shooting_conditions:
+  camera: Standard RGB Camera
+  resolution: 640x480
+  lighting: Indoor Fluorescent
+  distance_cm: 30
+  angle_degrees: 45
+  background: Table Surface
+evaluation_metrics:
+  primary: average_error_mm
+  secondary:
+  - inference_time_ms
+  - success_rate
+  - confidence
+  comparison_modes:
+  - opencv
+  - yolo
+  - hybrid
+environment:
+  os: Windows/Linux
+  python_version: 3.9+
+  opencv_version: 4.8+
+  gpu: Optional (CPU mode available)
+output:
+  logs_dir: ./outputs/logs
+  visualizations_dir: ./outputs/visualizations
+  metrics_csv: ./outputs/metrics.csv
+  summary_json: ./outputs/evaluation_summary.json
+remarks: 研究用3モード比較実験（CLI）
+results:
+  evaluation_date: '2025-11-07T14:37:51.064675'
+  total_images_evaluated: 3
+  modes:
+    opencv:
+      mode: opencv
+      total_images: 3
+      success_count: 3
+      success_rate: 1.0
+      avg_inference_time_ms: 3.8837591807047525
+      avg_error_mm: 0.0
+      std_error_mm: 0.0
+      min_error_mm: 0.0
+      max_error_mm: 0.0
+      avg_confidence: 0.6999999999999998
+    yolo:
+      mode: yolo
+      total_images: 3
+      success_count: 0
+      success_rate: 0.0
+      avg_inference_time_ms: 0.0
+      avg_error_mm: 0.0
+      std_error_mm: 0.0
+      min_error_mm: 0.0
+      max_error_mm: 0.0
+      avg_confidence: 0.0
+    hybrid:
+      mode: hybrid
+      total_images: 3
+      success_count: 0
+      success_rate: 0.0
+      avg_inference_time_ms: 0.11038780212402344
+      avg_error_mm: 0.0
+      std_error_mm: 0.0
+      min_error_mm: 0.0
+      max_error_mm: 0.0
+      avg_confidence: 0.0

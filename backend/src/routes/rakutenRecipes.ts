@@ -15,12 +15,45 @@ async function saveRecipeToCache(recipe: RakutenRecipe): Promise<void> {
 }
 
 async function getFavoriteRecipes(userId: number): Promise<RakutenRecipe[]> {
-  // TODO: お気に入りレシピ取得を実装
-  return [];
+  // DBからお気に入りメニューを取得（menusとJOIN）
+  const db = require('../config/database').default || require('../config/database');
+  const [rows] = await db.query(
+    `SELECT m.id, m.title, m.description, m.calories, m.image_url, m.created_by_ai, m.created_at, m.updated_at
+     FROM favorites f
+     JOIN menus m ON f.menu_id = m.id
+     WHERE f.user_id = ?
+     ORDER BY f.created_at DESC`,
+    [userId]
+  );
+  return rows;
 }
 
 async function addToFavorites(userId: number, recipeId: string): Promise<void> {
-  // TODO: お気に入り追加を実装
+  // DBへお気に入りを追加（menusに存在しなければ楽天レシピAPIから本物の情報で自動登録）
+  const db = require('../config/database').default || require('../config/database');
+  // TypeScript版rakutenRecipeApiをimport
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { fetchRakutenRecipe } = require('../services/rakutenRecipeApi');
+  // 1. menusテーブルに該当IDがあるか確認
+  const [menus] = await db.query('SELECT id FROM menus WHERE id = ?', [recipeId]);
+  if (!menus || menus.length === 0) {
+    // 2. なければ楽天レシピAPIから情報取得
+    let recipeInfo = { title: '楽天レシピ', calories: 0, description: '', image_url: '' };
+    try {
+      recipeInfo = await fetchRakutenRecipe(recipeId);
+    } catch (e) {
+      // 失敗時はダミー値
+    }
+    await db.query(
+      'INSERT INTO menus (id, title, description, calories, image_url, created_by_ai, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
+      [recipeId, recipeInfo.title, recipeInfo.description, recipeInfo.calories, recipeInfo.image_url, 0]
+    );
+  }
+  // 3. favoritesにINSERT
+  await db.query(
+    'INSERT INTO favorites (user_id, menu_id) VALUES (?, ?)',
+    [userId, recipeId]
+  );
 }
 
 async function removeFromFavorites(userId: number, recipeId: string): Promise<void> {

@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../contexts/AuthContext';
-import { apiClient } from '../services/api';
+import { API_BASE_URL, apiClient } from '../services/api';
 import { rakutenRecipeApi } from '../services/rakutenRecipeApi';
 
 
@@ -99,8 +99,36 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // 選択されたレシピのリスト（お弁当メニュー構成用）
   const [selectedRecipes, setSelectedRecipes] = useState<any[]>([]);
   
+  // お弁当の比率設定（PackingGuideScreen連携用）
+  const [bentoRiceRatio, setBentoRiceRatio] = useState<number>(3); // 主食比率 1-5
+  const [bentoLayoutType, setBentoLayoutType] = useState<'2split' | '3split' | '4split'>('3split'); // レイアウト
+  
   // 買い物リスト追加済みフラグ
   const [isAddedToShoppingList, setIsAddedToShoppingList] = useState(false);
+  // お気に入り登録済みフラグ
+  const [isFavorited, setIsFavorited] = useState(false);
+  // お気に入り登録済みかどうかを初回取得
+  useEffect(() => {
+    const checkFavorite = async () => {
+      if (!user) return;
+      const menuId = bento?.id || recipe?.id;
+      if (!menuId) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/favorites/${user.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.some((fav: any) => fav.menu_id == menuId)) {
+            setIsFavorited(true);
+          } else {
+            setIsFavorited(false);
+          }
+        }
+      } catch (e) {
+        // 通信エラー時は何もしない
+      }
+    };
+    checkFavorite();
+  }, [user, bento, recipe]);
   
   // レシピから一人前のカロリーを推定する関数（BentoMenuScreenと同じロジック）
   const estimateCaloriesPerServing = (recipe: any): number => {
@@ -169,9 +197,28 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // 初期レシピを選択リストに追加
   useEffect(() => {
     if (recipe && selectedRecipes.length === 0) {
-      setSelectedRecipes([recipe]);
+      // ingredients, instructions(steps)が文字列ならパース
+      const parsedRecipe = { ...recipe };
+      // 材料
+      if (typeof parsedRecipe.ingredients === 'string') {
+        try { parsedRecipe.ingredients = JSON.parse(parsedRecipe.ingredients); } catch { parsedRecipe.ingredients = []; }
+      }
+      if (!Array.isArray(parsedRecipe.ingredients)) {
+        parsedRecipe.ingredients = [];
+      }
+      // 作り方（steps/instructions）
+      let steps = parsedRecipe.steps || parsedRecipe.instructions;
+      if (typeof steps === 'string') {
+        try { steps = JSON.parse(steps); } catch { steps = []; }
+      }
+      if (!Array.isArray(steps)) {
+        steps = [];
+      }
+      parsedRecipe.instructions = steps;
+      parsedRecipe.steps = steps;
+      setSelectedRecipes([parsedRecipe]);
       // 初期レシピに基づいて補完メニューを読み込み
-      loadComplementaryRecipesForMultiple([recipe]);
+      loadComplementaryRecipesForMultiple([parsedRecipe]);
     }
   }, [recipe]);
   
@@ -352,16 +399,22 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       selectedRecipes.forEach((selectedRecipe) => {
         if (selectedRecipe.ingredients && selectedRecipe.ingredients.length > 0) {
           selectedRecipe.ingredients.forEach((ingredient: any) => {
-            const adjustedQuantity = calculateIngredientAmount(ingredient.note || '', ingredient);
-            allIngredients.push({
-              name: ingredient.name,
-              quantity: adjustedQuantity,
-              category: ingredient.category || '未分類',
-              recipeName: selectedRecipe.title || selectedRecipe.name || '料理名不明'
-            });
+            // quantity優先、なければnote、どちらもなければ空
+                  // ingredientの中身をデバッグ出力
+                  console.log('【ingredientデバッグ】', ingredient);
+                  // 分量はamountプロパティを使う
+                  const rawQuantity = ingredient.amount || '';
+                  allIngredients.push({
+                    name: ingredient.name,
+                    quantity: rawQuantity,
+                    category: ingredient.category || '未分類',
+                    recipeName: selectedRecipe.title || selectedRecipe.name || '料理名不明'
+                  });
           });
         }
       });
+      // デバッグ: 追加する材料の内容を出力
+      console.log('【買い物リスト追加】allIngredients:', allIngredients);
 
       if (allIngredients.length === 0) {
         alert('追加する材料がありません');
@@ -998,6 +1051,170 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             )}
           </View>
         </Card>
+
+        {/* お弁当の比率設定（レシピが2品以上選択されている場合のみ表示） */}
+        {isRecipe && selectedRecipes.length >= 2 && (
+          <>
+            <SectionTitle 
+              title="🍱 お弁当の比率設定" 
+              subtitle="詰め方ガイドで使用されます"
+              accent={PALETTE.coral} 
+            />
+            <Card style={styles.bentoRatioCard}>
+              {/* ご飯の量設定 */}
+              <View style={styles.bentoRatioSection}>
+                <View style={styles.bentoRatioHeader}>
+                  <MaterialCommunityIcons name="rice" size={20} color={PALETTE.coral} />
+                  <Text style={styles.bentoRatioTitle}>🍚 ご飯の量</Text>
+                  <View style={styles.bentoRatioBadge}>
+                    <Text style={styles.bentoRatioBadgeText}>{bentoRiceRatio}</Text>
+                  </View>
+                </View>
+                <View style={styles.bentoRatioButtons}>
+                  {[1, 2, 3, 4, 5].map((ratio) => (
+                    <TouchableOpacity
+                      key={ratio}
+                      style={[
+                        styles.bentoRatioButton,
+                        bentoRiceRatio === ratio && styles.bentoRatioButtonActive
+                      ]}
+                      onPress={() => setBentoRiceRatio(ratio)}
+                    >
+                      <Text style={[
+                        styles.bentoRatioButtonText,
+                        bentoRiceRatio === ratio && styles.bentoRatioButtonTextActive
+                      ]}>{ratio}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.bentoRatioLabels}>
+                  <Text style={styles.bentoRatioLabelText}>少なめ</Text>
+                  <Text style={styles.bentoRatioLabelText}>標準</Text>
+                  <Text style={styles.bentoRatioLabelText}>多め</Text>
+                </View>
+              </View>
+
+              {/* レイアウト設定 */}
+              <View style={[styles.bentoRatioSection, { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: PALETTE.stroke }]}>
+                <View style={styles.bentoRatioHeader}>
+                  <MaterialCommunityIcons name="grid" size={20} color={PALETTE.blue} />
+                  <Text style={styles.bentoRatioTitle}>📐 レイアウト</Text>
+                </View>
+                <View style={styles.bentoLayoutButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.bentoLayoutButton,
+                      bentoLayoutType === '2split' && styles.bentoLayoutButtonActive
+                    ]}
+                    onPress={() => setBentoLayoutType('2split')}
+                  >
+                    <Text style={[
+                      styles.bentoLayoutButtonText,
+                      bentoLayoutType === '2split' && styles.bentoLayoutButtonTextActive
+                    ]}>2分割</Text>
+                    <Text style={[
+                      styles.bentoLayoutButtonDesc,
+                      bentoLayoutType === '2split' && styles.bentoLayoutButtonDescActive
+                    ]}>ご飯|おかず</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.bentoLayoutButton,
+                      bentoLayoutType === '3split' && styles.bentoLayoutButtonActive
+                    ]}
+                    onPress={() => setBentoLayoutType('3split')}
+                  >
+                    <Text style={[
+                      styles.bentoLayoutButtonText,
+                      bentoLayoutType === '3split' && styles.bentoLayoutButtonTextActive
+                    ]}>3分割</Text>
+                    <Text style={[
+                      styles.bentoLayoutButtonDesc,
+                      bentoLayoutType === '3split' && styles.bentoLayoutButtonDescActive
+                    ]}>ご飯|主菜|副菜</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.bentoLayoutButton,
+                      bentoLayoutType === '4split' && styles.bentoLayoutButtonActive
+                    ]}
+                    onPress={() => setBentoLayoutType('4split')}
+                  >
+                    <Text style={[
+                      styles.bentoLayoutButtonText,
+                      bentoLayoutType === '4split' && styles.bentoLayoutButtonTextActive
+                    ]}>4分割</Text>
+                    <Text style={[
+                      styles.bentoLayoutButtonDesc,
+                      bentoLayoutType === '4split' && styles.bentoLayoutButtonDescActive
+                    ]}>ご飯|主菜|副菜2</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* プレビュー表示 */}
+              <View style={[styles.bentoRatioSection, { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: PALETTE.stroke }]}>
+                <Text style={styles.bentoPreviewTitle}>📊 プレビュー</Text>
+                <View style={styles.bentoPreviewContainer}>
+                  <View style={styles.bentoPreviewBox}>
+                    {/* 簡易プレビュー表示 */}
+                    <View style={{ flexDirection: 'row', height: 80 }}>
+                      {/* ご飯エリア */}
+                      <View style={[
+                        styles.bentoPreviewArea,
+                        { 
+                          width: `${(bentoRiceRatio / 6) * 100}%`,
+                          backgroundColor: 'rgba(255, 212, 128, 0.3)',
+                          borderRightWidth: 1,
+                          borderColor: '#ddd'
+                        }
+                      ]}>
+                        <Text style={styles.bentoPreviewLabel}>ご飯</Text>
+                        <Text style={styles.bentoPreviewPercent}>{Math.round((bentoRiceRatio / 6) * 100)}%</Text>
+                      </View>
+                      {/* おかずエリア */}
+                      <View style={{ flex: 1, flexDirection: 'column' }}>
+                        {bentoLayoutType === '2split' && (
+                          <View style={[styles.bentoPreviewArea, { backgroundColor: 'rgba(255, 138, 128, 0.3)', flex: 1 }]}>
+                            <Text style={styles.bentoPreviewLabel}>おかず</Text>
+                            <Text style={styles.bentoPreviewPercent}>{Math.round((1 - bentoRiceRatio / 6) * 100)}%</Text>
+                          </View>
+                        )}
+                        {bentoLayoutType === '3split' && (
+                          <>
+                            <View style={[styles.bentoPreviewArea, { backgroundColor: 'rgba(255, 138, 128, 0.3)', flex: 1, borderBottomWidth: 1, borderColor: '#ddd' }]}>
+                              <Text style={styles.bentoPreviewLabel}>主菜</Text>
+                            </View>
+                            <View style={[styles.bentoPreviewArea, { backgroundColor: 'rgba(165, 214, 167, 0.3)', flex: 1 }]}>
+                              <Text style={styles.bentoPreviewLabel}>副菜</Text>
+                            </View>
+                          </>
+                        )}
+                        {bentoLayoutType === '4split' && (
+                          <>
+                            <View style={[styles.bentoPreviewArea, { backgroundColor: 'rgba(255, 138, 128, 0.3)', flex: 1, borderBottomWidth: 1, borderColor: '#ddd' }]}>
+                              <Text style={styles.bentoPreviewLabel}>主菜</Text>
+                            </View>
+                            <View style={[styles.bentoPreviewArea, { backgroundColor: 'rgba(165, 214, 167, 0.3)', flex: 1, borderBottomWidth: 1, borderColor: '#ddd' }]}>
+                              <Text style={styles.bentoPreviewLabel}>副菜1</Text>
+                            </View>
+                            <View style={[styles.bentoPreviewArea, { backgroundColor: 'rgba(144, 202, 249, 0.3)', flex: 1 }]}>
+                              <Text style={styles.bentoPreviewLabel}>副菜2</Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={styles.bentoPreviewNote}>
+                    💡 この設定は詰め方ガイドで表示されるオーバーレイに反映されます
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </>
+        )}
+
         {/* 材料 */}
         <View onLayout={(event) => {
           sectionRefs.current["材料"] = event.nativeEvent.layout.y;
@@ -1077,19 +1294,23 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               </Card>
             )}
             <Card style={styles.listCard}>
-              {(selectedRecipe.ingredients || []).map((ing: any, i: number) => {
-                const adjustedAmount = calculateIngredientAmount(ing.note || ing.amount || '', ing);
-                return (
-                  <View key={`ing-${recipeIndex}-${i}`}>
-                    <RowCard 
-                      title={ing.name} 
-                      subtitle={adjustedAmount || '適量'} 
-                      accent={PALETTE.coral} 
-                    />
-                    {i !== (selectedRecipe.ingredients || []).length - 1 && <View style={styles.divider} />}
-                  </View>
-                );
-              })}
+              {(() => {
+                console.log('[材料デバッグ] selectedRecipe:', selectedRecipe);
+                console.log('[材料デバッグ] ingredients:', selectedRecipe.ingredients);
+                return (selectedRecipe.ingredients || []).map((ing: any, i: number) => {
+                  const adjustedAmount = calculateIngredientAmount(ing.note || ing.amount || '', ing);
+                  return (
+                    <View key={`ing-${recipeIndex}-${i}`}>
+                      <RowCard 
+                        title={ing.name} 
+                        subtitle={adjustedAmount || '適量'} 
+                        accent={PALETTE.coral} 
+                      />
+                      {i !== (selectedRecipe.ingredients || []).length - 1 && <View style={styles.divider} />}
+                    </View>
+                  );
+                });
+              })()}
             </Card>
           </View>
         ))}
@@ -1161,10 +1382,12 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <Card style={styles.listCard}>
               {adjustedIngredients.map((ing, i) => {
                 const adjustedAmount = calculateIngredientAmount(ing.note, ing);
+                // 材料名が空文字・null・○のみの場合はtitleを非表示
+                const isNameEmpty = !ing.name || ing.name.trim() === '' || ing.name.trim() === '○';
                 return (
                   <View key={ing.id}>
                     <RowCard 
-                      title={ing.name} 
+                      title={isNameEmpty ? '' : ing.name} 
                       subtitle={adjustedAmount || '適量'} 
                       accent={PALETTE.coral} 
                     />
@@ -1194,95 +1417,99 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             )}
             
             <Card style={styles.listCard}>
-              {selectedRecipe.instructions && selectedRecipe.instructions.length > 0 ? (
-                selectedRecipe.instructions.map((instruction: any, index: number) => {
-                  const stepNumber = index + 1;
-                  const stepText = instruction.text || instruction;
-                  const stepImage = instruction.image;
-                  const stepImages = instruction.images || [];
-                  const allImages = stepImage ? [stepImage, ...stepImages] : stepImages;
-                  
-                  // デバッグログ
-                  if (index < 3) {
-                    console.log(`🔍 手順${stepNumber}の画像データ:`, {
-                      stepImage,
-                      stepImagesLength: stepImages.length,
-                      allImagesLength: allImages.length,
-                      allImages: allImages
-                    });
-                  }
-                  
+              {(() => {
+                console.log('[作り方デバッグ] selectedRecipe:', selectedRecipe);
+                console.log('[作り方デバッグ] instructions:', selectedRecipe.instructions);
+                if (selectedRecipe.instructions && selectedRecipe.instructions.length > 0) {
+                  return selectedRecipe.instructions.map((instruction: any, index: number) => {
+                    const stepNumber = index + 1;
+                    const stepText = instruction.text || instruction;
+                    const stepImage = instruction.image;
+                    const stepImages = instruction.images || [];
+                    const allImages = stepImage ? [stepImage, ...stepImages] : stepImages;
+                    // デバッグログ
+                    if (index < 3) {
+                      console.log(`🔍 手順${stepNumber}の画像データ:`, {
+                        stepImage,
+                        stepImagesLength: stepImages.length,
+                        allImagesLength: allImages.length,
+                        allImages: allImages
+                      });
+                    }
+                    return (
+                      <View key={`recipe-${recipeIndex}-step-${index}`}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setStepDetailModal({
+                              visible: true,
+                              stepData: instruction,
+                              dishName: selectedRecipe.title || 'レシピ',
+                              stepNumber
+                            });
+                          }}
+                          style={styles.stepRow}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.stepIconWrapper}>
+                            <MaterialCommunityIcons 
+                              name="clipboard-text-outline" 
+                              size={20} 
+                              color={PALETTE.teal} 
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.stepTitle}>手順 {stepNumber}</Text>
+                            <Text style={styles.stepText} numberOfLines={3}>
+                              {stepText}
+                            </Text>
+                            {/* 手順の画像をサムネイル表示 */}
+                            {allImages.length > 0 && (
+                              <View style={{ marginTop: 8 }}>
+                                <ScrollView 
+                                  horizontal 
+                                  showsHorizontalScrollIndicator={false}
+                                  style={{ marginTop: 4 }}
+                                >
+                                  {allImages.slice(0, 3).map((img: string, imgIdx: number) => (
+                                    <Image
+                                      key={`step-${index}-img-${imgIdx}`}
+                                      source={{ uri: img }}
+                                      style={{
+                                        width: 80,
+                                        height: 80,
+                                        borderRadius: 8,
+                                        marginRight: 8,
+                                        backgroundColor: PALETTE.stroke
+                                      }}
+                                      resizeMode="cover"
+                                    />
+                                  ))}
+                                </ScrollView>
+                                <Text style={styles.hasImageBadge}>
+                                  📸 {allImages.length}枚の画像
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color={PALETTE.subtle} />
+                        </TouchableOpacity>
+                        {index !== selectedRecipe.instructions.length - 1 && <View style={styles.divider} />}
+                      </View>
+                    );
+                  });
+                } else {
                   return (
-                    <View key={`recipe-${recipeIndex}-step-${index}`}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setStepDetailModal({
-                            visible: true,
-                            stepData: instruction,
-                            dishName: selectedRecipe.title || 'レシピ',
-                            stepNumber
-                          });
-                        }}
-                        style={styles.stepRow}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.stepIconWrapper}>
-                          <MaterialCommunityIcons 
-                            name="clipboard-text-outline" 
-                            size={20} 
-                            color={PALETTE.teal} 
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.stepTitle}>手順 {stepNumber}</Text>
-                          <Text style={styles.stepText} numberOfLines={3}>
-                            {stepText}
-                          </Text>
-                          {/* 手順の画像をサムネイル表示 */}
-                          {allImages.length > 0 && (
-                            <View style={{ marginTop: 8 }}>
-                              <ScrollView 
-                                horizontal 
-                                showsHorizontalScrollIndicator={false}
-                                style={{ marginTop: 4 }}
-                              >
-                                {allImages.slice(0, 3).map((img: string, imgIdx: number) => (
-                                  <Image
-                                    key={`step-${index}-img-${imgIdx}`}
-                                    source={{ uri: img }}
-                                    style={{
-                                      width: 80,
-                                      height: 80,
-                                      borderRadius: 8,
-                                      marginRight: 8,
-                                      backgroundColor: PALETTE.stroke
-                                    }}
-                                    resizeMode="cover"
-                                  />
-                                ))}
-                              </ScrollView>
-                              <Text style={styles.hasImageBadge}>
-                                📸 {allImages.length}枚の画像
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color={PALETTE.subtle} />
-                      </TouchableOpacity>
-                      {index !== selectedRecipe.instructions.length - 1 && <View style={styles.divider} />}
+                    <View style={{ opacity: 0.7 }}>
+                      <RowCard
+                        title="調理手順はレシピ提供元でご確認ください"
+                        subtitle={`「${selectedRecipe.title}」の詳細な手順はレシピURLからご覧いただけます`}
+                        icon="open-in-new"
+                        accent={PALETTE.teal}
+                      />
                     </View>
                   );
-                })
-              ) : (
-                <View style={{ opacity: 0.7 }}>
-                  <RowCard
-                    title="調理手順はレシピ提供元でご確認ください"
-                    subtitle={`「${selectedRecipe.title}」の詳細な手順はレシピURLからご覧いただけます`}
-                    icon="open-in-new"
-                    accent={PALETTE.teal}
-                  />
-                </View>
-              )}
+                }
+              })()}
             </Card>
           </View>
         ))}
@@ -1991,8 +2218,79 @@ const MenuDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             disabled={isAddedToShoppingList}
           />
           <Button variant="outline" label="買い物リスト" onPress={() => navigation.navigate('ShoppingList')} accent={PALETTE.blue} />
-          <Button variant="outline" label="詰め方ガイド" onPress={() => navigation.navigate('PackingGuide')} accent={PALETTE.teal} />
-          <Button variant="outline" label="お気に入り登録" onPress={() => {}} accent={PALETTE.coral} />
+          <Button variant="outline" label="詰め方ガイド" onPress={() => navigation.navigate('PackingGuide', {
+            riceRatio: bentoRiceRatio,
+            layoutType: bentoLayoutType
+          })} accent={PALETTE.teal} />
+          <Button
+            variant={isFavorited ? "solid" : "outline"}
+            label={isFavorited ? "✓ お気に入り登録済み" : "お気に入り登録"}
+            disabled={isFavorited}
+            onPress={async () => {
+              if (!user || !token) {
+                alert('ログインが必要です');
+                return;
+              }
+              try {
+                const menuId = bento?.id || recipe?.id;
+                if (!menuId) {
+                  alert('メニューIDが取得できません');
+                  return;
+                }
+                // レシピ詳細情報を取得
+                const title = bento?.name || recipe?.title || '';
+                const image_url = bento?.imageUrl || recipe?.imageUrl || '';
+                const calories = bento?.totalNutrition?.calories
+                  ? Math.round(bento.totalNutrition.calories)
+                  : (recipe ? estimateCaloriesPerServing(recipe) : 0);
+                const description = bento?.description || recipe?.description || '';
+                // POSTデータ
+                // ingredients, steps（instructions）を必ず配列で送信
+                let ingredients = recipe?.ingredients || bento?.items?.flatMap(item => item.recipe?.ingredients || []) || [];
+                let steps = recipe?.instructions || recipe?.steps || bento?.items?.flatMap(item => item.recipe?.instructions || item.recipe?.steps || []) || [];
+                // 文字列ならパース
+                if (typeof ingredients === 'string') {
+                  try { ingredients = JSON.parse(ingredients); } catch { ingredients = []; }
+                }
+                if (typeof steps === 'string') {
+                  try { steps = JSON.parse(steps); } catch { steps = []; }
+                }
+                // デバッグ用ログ
+                console.log('[お気に入り追加] recipe:', recipe);
+                console.log('[お気に入り追加] ingredients:', ingredients);
+                console.log('[お気に入り追加] steps:', steps);
+                const postData = {
+                  user_id: user.id,
+                  menu_id: menuId,
+                  title,
+                  image_url,
+                  calories,
+                  description,
+                  ingredients,
+                  steps
+                };
+                console.log('[お気に入り追加] postData:', postData);
+                const res = await fetch(`${API_BASE_URL}/favorites`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(postData),
+                });
+                if (res.ok) {
+                  setIsFavorited(true);
+                  alert('お気に入りに追加しました！');
+                } else if (res.status === 409) {
+                  setIsFavorited(true);
+                  alert('すでにお気に入りに登録されています');
+                } else {
+                  const err = await res.json().catch(() => ({}));
+                  alert(`お気に入り追加に失敗しました: ${err.error || err.message || (err.details ? JSON.stringify(err.details) : '不明なエラー')}`);
+                }
+              } catch (e: any) {
+                alert('通信エラー: ' + (e?.message || ''));
+              }
+            }}
+            accent={PALETTE.coral}
+          />
           <Button
             variant="solid"
             label={`調理完了・メニュー評価（合計 ${total} kcal）`}
@@ -3016,6 +3314,144 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: PALETTE.ink,
     fontWeight: '600',
+  },
+
+  // お弁当比率設定
+  bentoRatioCard: {
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  bentoRatioSection: {
+    gap: 12,
+  },
+  bentoRatioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bentoRatioTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: PALETTE.ink,
+    flex: 1,
+  },
+  bentoRatioBadge: {
+    backgroundColor: PALETTE.coral,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 28,
+    alignItems: 'center',
+  },
+  bentoRatioBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  bentoRatioButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  bentoRatioButton: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  bentoRatioButtonActive: {
+    backgroundColor: PALETTE.coral,
+    borderColor: PALETTE.coral,
+  },
+  bentoRatioButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: PALETTE.subtle,
+  },
+  bentoRatioButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  bentoRatioLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  bentoRatioLabelText: {
+    fontSize: 11,
+    color: PALETTE.subtle,
+  },
+  bentoLayoutButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  bentoLayoutButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  bentoLayoutButtonActive: {
+    backgroundColor: PALETTE.blue,
+    borderColor: PALETTE.blue,
+  },
+  bentoLayoutButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: PALETTE.subtle,
+    marginBottom: 2,
+  },
+  bentoLayoutButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  bentoLayoutButtonDesc: {
+    fontSize: 10,
+    color: PALETTE.subtle,
+  },
+  bentoLayoutButtonDescActive: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  bentoPreviewTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: PALETTE.ink,
+    marginBottom: 8,
+  },
+  bentoPreviewContainer: {
+    gap: 8,
+  },
+  bentoPreviewBox: {
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  bentoPreviewArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+  },
+  bentoPreviewLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.ink,
+  },
+  bentoPreviewPercent: {
+    fontSize: 10,
+    color: PALETTE.subtle,
+    marginTop: 2,
+  },
+  bentoPreviewNote: {
+    fontSize: 11,
+    color: PALETTE.subtle,
+    lineHeight: 16,
+    textAlign: 'center',
   },
 
 });

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# 実験データ
+outputs/
+uploads/
+test_images/*.jpg
+test_images/*.png
+test_images/*.bmp
+
+# YOLOモデル（サイズが大きいため）
+models/*.weights
+models/*.pt
+
+# 設定ファイル（機密情報含む可能性）
+.env
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ログ
+*.log

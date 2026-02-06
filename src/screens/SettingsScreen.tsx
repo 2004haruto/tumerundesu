@@ -4,19 +4,19 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../contexts/AuthContext';
@@ -240,6 +240,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmNewPassword("");
+    navigation.goBack();
   };
 
   // 保存処理
