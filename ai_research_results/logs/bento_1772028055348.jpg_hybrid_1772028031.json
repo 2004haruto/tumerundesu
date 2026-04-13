@@ -1,0 +1,19 @@
+{
+  "filename": "bento_1772028055348.jpg",
+  "timestamp": "2026-02-25T14:00:31.069619",
+  "mode": "hybrid",
+  "brightness": 89.70837516496984,
+  "angle": 87.8015365600586,
+  "inference_time_ms": 475.9936332702637,
+  "error_mm": 0.0,
+  "confidence": 0.25781700313091277,
+  "bbox": {
+    "x": 409,
+    "y": 367,
+    "width": 436,
+    "height": 153,
+    "width_mm": 60.4802036199095,
+    "height_mm": 21.223557692307693
+  },
+  "success": false
+}
